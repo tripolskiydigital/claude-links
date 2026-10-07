@@ -417,8 +417,7 @@ type Kit = {
   quiet: { hover?: { backgroundColor: string } }
   /** A pane entry's frame: on the desktop a thin rounded grey border, so its hover fill is rounded too. */
   card: { borderStyle?: string; borderColor?: string; paddingX?: number }
-  /** A bar chip's frame: a rounded border no one sees, so its hover fill is rounded. */
-  chip: { borderStyle?: string; borderColor?: string; paddingX?: number }
+  Link?: Elements['desktop']['Link']
   icons: Record<string, string | null>
 }
 
@@ -435,7 +434,8 @@ function kitOf(els: ReturnType<EngineInterface['ui']['resolve']>, surface: strin
     hover: isTerminal ? 'userMessageBackground' : 'rgba(128, 128, 128, 0.14)',
     quiet: isTerminal ? {} : { hover: { backgroundColor: 'transparent' } },
     card: isTerminal ? {} : { borderStyle: 'round', borderColor: 'inactive', paddingX: 1 },
-    chip: isTerminal ? {} : { borderStyle: 'round', borderColor: 'rgba(0, 0, 0, 0)', paddingX: 1 },
+    // On the desktop a Link opens in a click; the terminal keeps the Button.
+    ...(!isTerminal && 'Link' in els ? { Link: els.Link } : {}),
     icons,
   }
 }
@@ -708,8 +708,9 @@ export const register: Register = on => {
         onBar.map((link, i) => {
           const name = labelOf(link)
           const shown = truncate(name, budget)
-          // The whole chip lights under the pointer, rounded: on the desktop only
-          // a Box with a border is drawn rounded, so the chip has an unseen one.
+          // The whole chip lights under the pointer (the desktop rounds a Box's
+          // fill a little). The name is a Link, not a Button: a Button under the
+          // pointer always lights on its own, and only the chip should.
           return (
             <Box
               key={`chip-${i}`}
@@ -717,13 +718,16 @@ export const register: Register = on => {
               flexDirection="row"
               alignItems="center"
               flexShrink={0}
-              columnGap={1}
-              {...k.chip}
+              paddingRight={1}
               {...k.base}
               hover={{ backgroundColor: k.hover }}
             >
               {linkIcon(k, link.url)}
-              <Button key={`open-${i}`} label={shown} plain {...k.quiet} onPress={() => void openUrl($, link.url)} />
+              {k.Link !== undefined ? (
+                <k.Link href={link.url} label={shown} />
+              ) : (
+                <Button key={`open-${i}`} label={shown} plain {...k.quiet} onPress={() => void openUrl($, link.url)} />
+              )}
               {shown !== name && (
                 <Box
                   position="absolute"

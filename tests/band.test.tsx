@@ -50,12 +50,13 @@ test('the bar shows four pinned links of the scope and opens one', async ($, on)
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    expect(await ui.find({ key: 'open-3' })).toBeDefined()
-    expect(await ui.find({ key: 'open-4' })).toBeUndefined()
-    await ui.press({ key: 'open-1' })
+    expect(await ui.find({ key: 'chip-3' })).toBeDefined()
+    expect(await ui.find({ key: 'chip-4' })).toBeUndefined()
+    // The terminal opens a link with its Button; the desktop's chip is a Link the app opens.
+    if (surface === 'terminal') await ui.press({ key: 'open-1' })
     await ui.unmount()
   }
-  expect(ran.filter(r => r.startsWith('open '))).toEqual(['open https://site1.com/page', 'open https://site1.com/page'])
+  expect(ran.filter(r => r.startsWith('open '))).toEqual(['open https://site1.com/page'])
 })
 
 test('a recent link pins to the session, a typed one to the project', async ($, on) => {
@@ -71,7 +72,7 @@ test('a recent link pins to the session, a typed one to the project', async ($, 
 
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   // Nothing pinned yet in either scope.
-  expect(await ui.find({ key: 'open-0' })).toBeUndefined()
+  expect(await ui.find({ key: 'chip-0' })).toBeUndefined()
 
   await ui.press({ key: 'recent-session-0' })
   // Pinned there now: the cell is ✓, and a press would unpin it.
@@ -88,10 +89,10 @@ test('a recent link pins to the session, a typed one to the project', async ($, 
   await ui.press({ key: 'draft-save' })
   // The form closed and the project's bar holds the typed link.
   expect(await ui.find({ key: 'draft-save' })).toBeUndefined()
-  await ui.press({ key: 'open-0' })
+  expect(await ui.find({ key: 'chip-0' })).toBeDefined()
 
   await ui.press({ key: 'scope-session' })
-  await ui.press({ key: 'open-0' })
+  expect(await ui.find({ key: 'chip-0' })).toBeDefined()
 
   // An entry of «Recent» opens from the list shown over the button.
   await ui.press({ key: 'recent-0-open' })
@@ -122,11 +123,8 @@ test('a recent link pins to the session, a typed one to the project', async ($, 
   expect(await pane.find({ key: 'all-session-0-open' })).toBeUndefined()
   await pane.unmount()
 
-  expect(ran.filter(r => r.startsWith('open '))).toEqual([
-    'open https://figma.com/file/x',
-    'open https://kanban.slavic.digital/b',
-    'open https://kanban.slavic.digital/b',
-  ])
+  // Opened from the «Recent» list; the bar's chips are Links the app opens.
+  expect(ran.filter(r => r.startsWith('open '))).toEqual(['open https://kanban.slavic.digital/b'])
 })
 
 test('a row another plugin drew in the band stays above the links', async ($, on) => {
@@ -136,7 +134,7 @@ test('a row another plugin drew in the band stays above the links', async ($, on
 
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   expect(await ui.find({ key: 'tabs-row' })).toBeDefined()
-  expect(await ui.find({ key: 'open-0' })).toBeDefined()
+  expect(await ui.find({ key: 'chip-0' })).toBeDefined()
   await ui.unmount()
 })
 
