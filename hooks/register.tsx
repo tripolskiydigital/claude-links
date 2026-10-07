@@ -341,7 +341,10 @@ function linkIcon(k: Kit, url: string) {
   return <Svg source={faviconSvg(k.icons[host], host)} alt={host} width={ICON_BOX} height={ICON_BOX} />
 }
 
-/** A link's row in the pane: favicon, name (opens it), its URL dim when it has a name, then `actions`. */
+/**
+ * A link's entry in the pane, in two lines so a narrow pane cuts nothing off:
+ * favicon and name (opens it); then its URL, dim, and the `actions` at the right.
+ */
 function linkRow(
   $: Engine,
   k: Kit,
@@ -353,16 +356,8 @@ function linkRow(
 ) {
   const { Box, Text, Button } = k
   return (
-    <Box
-      key={key}
-      flexDirection="row"
-      alignItems="center"
-      justifyContent="space-between"
-      columnGap={1}
-      {...k.base}
-      hover={{ backgroundColor: k.hover }}
-    >
-      <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={1}>
+    <Box key={key} flexDirection="column" {...k.base} hover={{ backgroundColor: k.hover }}>
+      <Box flexDirection="row" alignItems="center" columnGap={1} overflow="hidden">
         {linkIcon(k, link.url)}
         <Button
           key={`${key}-open`}
@@ -372,24 +367,53 @@ function linkRow(
           {...k.quiet}
           onPress={() => void openUrl($, link.url)}
         />
-        {link.title !== '' && (
+      </Box>
+      <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={2}>
+        <Box flexShrink={1} minWidth={0} paddingLeft={3} overflow="hidden">
           <Text dimColor wrap="truncate">
             {shortUrl(link.url)}
           </Text>
-        )}
-      </Box>
-      <Box flexDirection="row" flexShrink={0} columnGap={1}>
-        {actions}
+        </Box>
+        <Box flexDirection="row" alignItems="center" flexShrink={0} columnGap={1}>
+          {actions}
+        </Box>
       </Box>
     </Box>
   )
 }
 
-/** The add / edit form: link, name, scope, save. */
-function draftForm($: Engine, k: Kit, d: Draft, l: Lang) {
+/**
+ * The add / edit form: link, name, scope, save. Under the bar it ends in one
+ * row; in the pane (`isNarrow`) the scope and the buttons take a row each.
+ */
+function draftForm($: Engine, k: Kit, d: Draft, l: Lang, isNarrow = false) {
   const { Box, Text, Button, Input } = k
+  const scopeRow = (
+    <Box flexDirection="row" alignItems="center" columnGap={1}>
+      <Text dimColor>{t(l, 'pinTo')}</Text>
+      {(['project', 'session'] as const).map(s => (
+        <Button
+          key={`draft-${s}`}
+          label={t(l, s)}
+          {...(d.scope === s ? { variant: 'primary' as const } : {})}
+          onPress={() => void update($, draft, now => ({ ...now, scope: s }))}
+        />
+      ))}
+    </Box>
+  )
+  const buttons = (
+    <Box flexDirection="row" alignItems="center" justifyContent="flex-end" columnGap={1}>
+      <Button key="draft-cancel" label={t(l, 'cancel')} onPress={() => void closeDraft($)} />
+      <Button
+        key="draft-save"
+        label={t(l, d.edit !== null ? 'saveEdit' : 'save')}
+        variant="primary"
+        onPress={() => void submitDraft($, {})}
+      />
+    </Box>
+  )
   return (
-    <Box flexDirection="column" rowGap={1}>
+    <Box flexDirection="column" alignItems="stretch" rowGap={1}>
       {Input !== undefined && (
         <Input
           key="draft-url"
@@ -409,28 +433,15 @@ function draftForm($: Engine, k: Kit, d: Draft, l: Lang) {
           onSubmit={value => void submitDraft($, { title: value })}
         />
       )}
-      <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1} flexWrap="wrap">
-        <Box flexDirection="row" alignItems="center" columnGap={1}>
-          <Text dimColor>{t(l, 'pinTo')}</Text>
-          {(['project', 'session'] as const).map(s => (
-            <Button
-              key={`draft-${s}`}
-              label={t(l, s)}
-              {...(d.scope === s ? { variant: 'primary' as const } : {})}
-              onPress={() => void update($, draft, now => ({ ...now, scope: s }))}
-            />
-          ))}
+      {isNarrow ? (
+        scopeRow
+      ) : (
+        <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1}>
+          {scopeRow}
+          {buttons}
         </Box>
-        <Box flexDirection="row" alignItems="center" columnGap={1}>
-          <Button key="draft-cancel" label={t(l, 'cancel')} onPress={() => void closeDraft($)} />
-          <Button
-            key="draft-save"
-            label={t(l, d.edit !== null ? 'saveEdit' : 'save')}
-            variant="primary"
-            onPress={() => void submitDraft($, {})}
-          />
-        </Box>
-      </Box>
+      )}
+      {isNarrow && buttons}
     </Box>
   )
 }
@@ -556,7 +567,10 @@ export const register: Register = on => {
     const recentWidth = Math.max(16, Math.min(40, Math.floor(e.props.bodyColumns / 3)))
     // Two columns, «Project» and «Session», named once in the header: 📌 pins the
     // link there, ✓ says it is pinned there and unpins it; ✎ renames a pinned one.
-    const columnWidth = Math.max([...t(l, 'project')].length, [...t(l, 'session')].length) + 2
+    // Every row is as wide as the header: the name has a column of its own, so the
+    // marks stand under their titles whatever the name's length.
+    const columnWidth = Math.max([...t(l, 'project')].length, [...t(l, 'session')].length) + 3
+    const nameWidth = recentWidth + 4
     const columns = (cells: [RenderChildren, RenderChildren, RenderChildren]) => (
       <Box flexDirection="row" alignItems="center" flexShrink={0}>
         <Box width={columnWidth} justifyContent="center">
@@ -584,8 +598,12 @@ export const register: Register = on => {
         borderColor="inactive"
         backgroundColor="userMessageBackground"
       >
-        <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={2}>
-          <Text dimColor>{t(l, 'recentTitle')}</Text>
+        <Box flexDirection="row" alignItems="center" columnGap={2}>
+          <Box width={nameWidth} flexShrink={0} overflow="hidden">
+            <Text dimColor wrap="truncate">
+              {t(l, 'recentTitle')}
+            </Text>
+          </Box>
           {rec.length > 0 &&
             columns([
               <Text dimColor>{t(l, 'project')}</Text>,
@@ -613,8 +631,8 @@ export const register: Register = on => {
                   ? ['session', sessionIndex]
                   : null
           return (
-            <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={2}>
-              <Box flexDirection="row" alignItems="center" columnGap={1}>
+            <Box flexDirection="row" alignItems="center" columnGap={2}>
+              <Box width={nameWidth} flexShrink={0} flexDirection="row" alignItems="center" columnGap={1} overflow="hidden">
                 {linkIcon(k, link.url)}
                 <Button
                   key={`recent-${i}-open`}
@@ -700,7 +718,8 @@ export const register: Register = on => {
     ])
     const k = kitOf($.ui.resolve(e), e.surface, icons)
     const { Box, Text, Button } = k
-    const width = Math.max(16, e.props.bodyColumns - 36)
+    // The name has its line to itself, the URL and the buttons the next one.
+    const width = Math.max(16, e.props.bodyColumns - 6)
     const groups: [Scope, PinnedLink[], string][] = [
       ['project', pLinks, t(l, 'projectSection', { name: pname })],
       ['session', sLinks, t(l, 'sessionSection')],
@@ -740,8 +759,17 @@ export const register: Register = on => {
               return isEdited ? (
                 <Box key={`all-edit-box-${s}-${i}`} flexDirection="column" rowGap={1}>
                   {row}
-                  <Box paddingLeft={2} paddingBottom={1}>
-                    {draftForm($, k, d, l)}
+                  <Box
+                    flexDirection="column"
+                    alignItems="stretch"
+                    marginLeft={3}
+                    marginBottom={1}
+                    paddingX={1}
+                    paddingY={1}
+                    borderStyle="round"
+                    borderColor="inactive"
+                  >
+                    {draftForm($, k, d, l, true)}
                   </Box>
                 </Box>
               ) : (

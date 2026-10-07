@@ -91,8 +91,8 @@ const STRINGS: Record<Lang, Strings> = {
     barHint: 'На панели — первые {max} из каждого списка.',
     emptyProject: 'Нет ссылок проекта',
     emptySession: 'Нет ссылок сессии',
-    moveProject: '→ В проект',
-    moveSession: '→ В сессию',
+    moveProject: '→ Проект',
+    moveSession: '→ Сессия',
     openFailed: 'Не удалось открыть ссылку: {error}',
   },
   uk: {
@@ -122,8 +122,8 @@ const STRINGS: Record<Lang, Strings> = {
     barHint: 'На панелі — перші {max} з кожного списку.',
     emptyProject: 'Немає посилань проєкту',
     emptySession: 'Немає посилань сесії',
-    moveProject: '→ У проєкт',
-    moveSession: '→ У сесію',
+    moveProject: '→ Проєкт',
+    moveSession: '→ Сесія',
     openFailed: 'Не вдалося відкрити посилання: {error}',
   },
   de: {
