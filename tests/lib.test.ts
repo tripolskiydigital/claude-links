@@ -47,8 +47,8 @@ test('typed links gain https, non-links are refused', async () => {
 test('a name is cut to a quarter of the links block', async () => {
   expect(truncate('short', 10)).toBe('short')
   expect(truncate('a very long link name', 10)).toBe('a very lo…')
-  // 162 cells less 62 of controls and the card: 100 for the links, 25 each, 4 of them icon.
-  expect(labelBudget(162)).toBe(21)
+  // 144 cells less 44 of controls: 100 for the links, 25 each, 4 of them icon.
+  expect(labelBudget(144)).toBe(21)
   expect(labelBudget(10)).toBe(6)
 })
 
@@ -56,5 +56,6 @@ test('the desktop locale picks one of the tabs mod languages, English otherwise'
   expect(langOf('uk-UA')).toBe('uk')
   expect(langOf('de')).toBe('de')
   expect(langOf('ja-JP')).toBe('en')
-  expect(t('fr', 'all')).toBe('Tous les liens')
+  expect(t('fr', 'allTitle')).toBe('Tous les liens')
+  expect(t('ru', 'all')).toBe('Все')
 })

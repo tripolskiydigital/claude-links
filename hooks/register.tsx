@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, Register, RenderChildren, RenderElement } from 'claude-code'
 
-import type { Draft, Lang, PinnedLink, Scope, Section } from '../types'
+import type { Draft, Lang, PinnedLink, Scope } from '../types'
 import { langOf, t } from './i18n'
 import {
   BAR_LINKS,
@@ -33,6 +33,7 @@ const draft = atom({ plugin: 'links-bar', key: 'draft' } as const, EMPTY_DRAFT)
 const favicons = atom({ plugin: 'links-bar', key: 'favicons' } as const, {})
 const projectName = atom({ plugin: 'links-bar', key: 'projectName' } as const, '')
 const lang = atom({ plugin: 'links-bar', key: 'lang' } as const, 'en')
+const paneOpen = atom({ plugin: 'links-bar', key: 'paneOpen' } as const, false)
 
 /** Pins and the scope switch are read again this often: another session may have changed them. */
 const SYNC_MS = 5_000
@@ -189,23 +190,29 @@ async function setScope($: Engine, s: Scope): Promise<void> {
   await update($, scope, () => s)
 }
 
-async function toggleSection($: Engine, s: Exclude<Section, null>): Promise<void> {
-  if (s === 'recent') await refreshRecent($)
-  if (s === 'add') {
-    const sc = await read($, scope)
-    await update($, draft, () => ({ ...EMPTY_DRAFT, scope: sc }))
-  }
-  await update($, section, now => (now === s ? null : s))
+/** `+`: opens the add form under the bar, empty and set to the bar's scope, or closes it. */
+async function toggleAdd($: Engine): Promise<void> {
+  const sc = await read($, scope)
+  await update($, draft, () => ({ ...EMPTY_DRAFT, scope: sc }))
+  await update($, section, now => (now === 'add' ? null : 'add'))
 }
 
-/** «All links»: opens the side pane, or closes it when it is open. */
+/** «All»: opens the side pane, or closes it when it is open. */
 async function togglePane($: Engine): Promise<void> {
   if ((await $.ui.panes()).some(pane => pane.id === PANE)) {
     await $.ui.close({ id: PANE })
+    await update($, paneOpen, () => false)
     return
   }
   await update($, section, () => null)
-  await $.ui.open({ id: PANE, title: t(await read($, lang), 'all'), focus: true, closeOnEscape: true, columns: 64 })
+  const opened = await $.ui.open({
+    id: PANE,
+    title: t(await read($, lang), 'allTitle'),
+    focus: true,
+    closeOnEscape: true,
+    columns: 64,
+  })
+  await update($, paneOpen, () => opened.isPlaced)
 }
 
 /**
@@ -258,7 +265,7 @@ async function reorder($: Engine, s: Scope, index: number, delta: number): Promi
 
 async function closeDraft($: Engine): Promise<void> {
   await update($, draft, () => EMPTY_DRAFT)
-  await update($, section, now => (now === 'add' ? null : now))
+  await update($, section, () => null)
 }
 
 async function submitDraft($: Engine, patch: Partial<Draft>): Promise<void> {
@@ -273,7 +280,7 @@ async function submitDraft($: Engine, patch: Partial<Draft>): Promise<void> {
 
 /** ✎ in the pane: the form opens under that row, filled in. */
 async function editPin($: Engine, s: Scope, index: number, link: PinnedLink): Promise<void> {
-  await update($, section, now => (now === 'add' ? null : now))
+  await update($, section, () => null)
   await update($, draft, now =>
     now.edit?.scope === s && now.edit.index === index
       ? EMPTY_DRAFT
@@ -326,7 +333,7 @@ function linkIcon(k: Kit, url: string) {
   return <Svg source={faviconSvg(k.icons[host], host)} alt={host} width={ICON_BOX} height={ICON_BOX} />
 }
 
-/** A link's row in a list: favicon, name (opens it), its URL dim when it has a name, then `actions`. */
+/** A link's row in the pane: favicon, name (opens it), its URL dim when it has a name, then `actions`. */
 function linkRow(
   $: Engine,
   k: Kit,
@@ -335,7 +342,6 @@ function linkRow(
   width: number,
   actions: RenderChildren,
   isDim = false,
-  onOpen?: () => void,
 ) {
   const { Box, Text, Button } = k
   return (
@@ -356,10 +362,7 @@ function linkRow(
           plain
           {...(isDim ? { dimColor: true } : {})}
           {...k.quiet}
-          onPress={() => {
-            void openUrl($, link.url)
-            onOpen?.()
-          }}
+          onPress={() => void openUrl($, link.url)}
         />
         {link.title !== '' && (
           <Text dimColor wrap="truncate">
@@ -448,13 +451,20 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // The pane's close mark or Escape closes it too: «All» lights only while it is open.
+  on('ui.close', async ($, e, next) => {
+    const result = await next(e)
+    if (e.id === PANE) await update($, paneOpen, () => false)
+    return result
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     // The band is one site: what the plugins beneath draw (project tabs, say)
     // stays, and the links row goes under it.
     const below = await next(e)
     if (e.props.hasSurvey) return below
 
-    const [rec, pLinks, sLinks, sc, sec, d, icons, l] = await Promise.all([
+    const [rec, pLinks, sLinks, sc, sec, d, icons, l, isPaneOpen] = await Promise.all([
       read($, recent),
       read($, projectLinks),
       read($, sessionLinks),
@@ -463,6 +473,7 @@ export const register: Register = on => {
       read($, draft),
       read($, favicons),
       read($, lang),
+      read($, paneOpen),
     ])
     const k = kitOf($.ui.resolve(e), e.surface, icons)
     const { Box, Text, Button } = k
@@ -532,46 +543,57 @@ export const register: Register = on => {
         })
       )
 
-    // «Recent links» opens upward over the transcript, as a tab's recent
-    // sessions do in the tabs mod.
-    const popupWidth = Math.max(36, Math.min(88, e.props.bodyColumns - 2))
-    const closeRecent = () => void update($, section, () => null)
-    const recentPopup = (
+    // «Recent» as a tab's recent sessions in the tabs mod: hovering the button
+    // shows the list above it, sized to its rows; the pointer may move into it.
+    const recentWidth = Math.max(16, Math.min(40, Math.floor(e.props.bodyColumns / 3)))
+    const recentList = (
       <Box
         position="absolute"
         bottom={2}
         right={0}
-        width={popupWidth}
+        display="none"
+        hover={{ display: 'flex' }}
         flexDirection="column"
+        minWidth={32}
         paddingX={1}
         borderStyle="round"
         borderColor="inactive"
         backgroundColor="userMessageBackground"
       >
-        <Box flexDirection="row" alignItems="center" justifyContent="space-between">
-          <Text dimColor>{t(l, 'recentTitle')}</Text>
-          <Button key="recent-close" label="✕" plain onPress={closeRecent} />
-        </Box>
+        <Text dimColor>{t(l, 'recentTitle')}</Text>
         {rec.length === 0 && <Text dimColor>{t(l, 'recentEmpty')}</Text>}
         {rec.map((link, i) => {
           const inProject = pLinks.some(p => p.url === link.url)
           const inSession = sLinks.some(p => p.url === link.url)
-          return linkRow($, k, `recent-${i}`, link, Math.max(16, popupWidth - 34), [
-            <Button
-              key={`recent-project-${i}`}
-              label={inProject ? `✓ ${t(l, 'project')}` : t(l, 'pinProject')}
-              plain
-              dimColor={inProject}
-              onPress={() => void (inProject || pin($, 'project', link))}
-            />,
-            <Button
-              key={`recent-session-${i}`}
-              label={inSession ? `✓ ${t(l, 'session')}` : t(l, 'pinSession')}
-              plain
-              dimColor={inSession}
-              onPress={() => void (inSession || pin($, 'session', link))}
-            />,
-          ], false, closeRecent)
+          return (
+            <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={2}>
+              <Box flexDirection="row" alignItems="center" columnGap={1}>
+                {linkIcon(k, link.url)}
+                <Button
+                  key={`recent-${i}-open`}
+                  label={truncate(labelOf(link), recentWidth)}
+                  plain
+                  onPress={() => void openUrl($, link.url)}
+                />
+              </Box>
+              <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
+                <Button
+                  key={`recent-project-${i}`}
+                  label={inProject ? `✓ ${t(l, 'project')}` : t(l, 'pinProject')}
+                  plain
+                  dimColor
+                  onPress={() => void (inProject || pin($, 'project', link))}
+                />
+                <Button
+                  key={`recent-session-${i}`}
+                  label={inSession ? `✓ ${t(l, 'session')}` : t(l, 'pinSession')}
+                  plain
+                  dimColor
+                  onPress={() => void (inSession || pin($, 'session', link))}
+                />
+              </Box>
+            </Box>
+          )
         })}
       </Box>
     )
@@ -579,7 +601,6 @@ export const register: Register = on => {
     const bar = (
       <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1}>
         <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={1}>
-          <Text dimColor>🔗</Text>
           {scopeSwitch}
           {chips}
           <Box key="add-box" flexShrink={0}>
@@ -587,36 +608,34 @@ export const register: Register = on => {
               key="add"
               label="+"
               {...(sec === 'add' ? { variant: 'primary' as const } : {})}
-              onPress={() => void toggleSection($, 'add')}
+              onPress={() => void toggleAdd($)}
             />
           </Box>
         </Box>
         <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
           <Box key="recent-anchor" position="relative" flexShrink={0}>
-            <Button
-              key="recent"
-              label={t(l, 'recent')}
-              {...(sec === 'recent' ? { variant: 'primary' as const } : {})}
-              onPress={() => void toggleSection($, 'recent')}
-            />
-            {sec === 'recent' && recentPopup}
+            <Button key="recent" label={t(l, 'recent')} onPress={() => void refreshRecent($)} />
+            {recentList}
           </Box>
           <Button
             key="all"
             label={total > 0 ? `${t(l, 'all')} · ${total}` : t(l, 'all')}
+            {...(isPaneOpen ? { variant: 'primary' as const } : {})}
             onPress={() => void togglePane($)}
           />
         </Box>
       </Box>
     )
 
-    // Its own outlined card, so the links read apart from the tabs drawn above.
-    const mine = (
-      <Box flexDirection="column" rowGap={1} paddingX={1} borderStyle="round" borderColor="inactive">
-        {bar}
-        {sec === 'add' && draftForm($, k, d, l)}
-      </Box>
-    )
+    const mine =
+      sec === 'add' ? (
+        <Box flexDirection="column" rowGap={1}>
+          {bar}
+          {draftForm($, k, d, l)}
+        </Box>
+      ) : (
+        bar
+      )
     return isEmptyTree(below) ? mine : (
       <Box flexDirection="column" rowGap={1}>
         {below}
@@ -625,7 +644,7 @@ export const register: Register = on => {
     )
   })
 
-  // «All links»: every pinned link of the project and the session, in a side pane.
+  // «All»: every pinned link of the project and the session, in a side pane.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const [pLinks, sLinks, d, icons, pname, l] = await Promise.all([
       read($, projectLinks),

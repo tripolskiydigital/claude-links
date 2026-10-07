@@ -63,7 +63,6 @@ test('a recent link pins to the session, a typed one to the project', async ($, 
   // Nothing pinned yet in either scope.
   expect(await ui.find({ key: 'open-0' })).toBeUndefined()
 
-  await ui.press({ key: 'recent' })
   await ui.press({ key: 'recent-session-0' })
 
   await ui.press({ key: 'add' })
@@ -77,12 +76,10 @@ test('a recent link pins to the session, a typed one to the project', async ($, 
   await ui.press({ key: 'scope-session' })
   await ui.press({ key: 'open-0' })
 
-  // An entry of «Recent links» opens and the list folds away.
-  await ui.press({ key: 'recent' })
+  // An entry of «Recent» opens from the list shown over the button.
   await ui.press({ key: 'recent-0-open' })
-  expect(await ui.find({ key: 'recent-close' })).toBeUndefined()
 
-  // «All links» is a side pane.
+  // «All» is a side pane.
   await ui.press({ key: 'all' })
   expect(opened).toEqual(['links-bar'])
   await ui.unmount()

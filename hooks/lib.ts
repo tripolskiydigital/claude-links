@@ -127,9 +127,9 @@ export function isPrivateHost(host: string): boolean {
 
 /**
  * Cells the bar's own controls take beside the links: the scope switch, `+`,
- * «Recent links» and «All links», with the gaps between them.
+ * «Recent» and «All», with the gaps between them.
  */
-const CONTROLS_CELLS = 62
+const CONTROLS_CELLS = 44
 /** The favicon and the chip's padding, in cells. */
 const CHIP_CHROME_CELLS = 4
 

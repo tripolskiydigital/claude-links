@@ -5,17 +5,17 @@
 A mod for the **Code tab of Claude Desktop** that keeps the links you work with one click away, in a bar above the prompt:
 
 ```
-🔗 [Project] Session   ■ Kan   ■ figma.com/file/x   ■ A rather long na…   +      [Recent links] [All links · 6]
+[Project] Session   ■ Kan   ■ figma.com/file/x   ■ A rather long na…   +      [Recent] [All · 6]
 ```
 
 - **Pinned links with favicons**, up to 4 on the bar. Pin a link to the **project** (every session in that folder sees it) or to **this session** only; the small **Project / Session** switch on the left picks which set the bar shows.
 - **Short and tidy**: each name takes at most a quarter of the links' room; a cut name shows in full, with its URL, when you hover it. A link with no name shows as its URL without `https://` and `www.`.
 - **+** opens two fields, the link and its name, and the choice of project or session.
-- **Recent links** opens a list upward with the session's 10 latest links, each with **📌 Project** and **📌 Session** to pin it.
-- **All links** opens a side pane with every pinned link of the project and the session: reorder (the first 4 of each list are on the bar), rename (✎), move to the other list, unpin.
+- **Recent**: hover it for a list, above the button, of the session's 10 latest links, each with **📌 Project** and **📌 Session** to pin it.
+- **All** opens a side pane (and stays lit while it is open) with every pinned link of the project and the session: reorder (the first 4 of each list are on the bar), rename (✎), move to the other list, unpin.
 - **Speaks your language**: English, Deutsch, Français, Italiano, Español, Українська, Русский, following Claude Desktop's language setting; English otherwise.
 
-It is built on Claude Code's **mods** (plugins of function hooks), so it does not patch the Claude app. It shares the band above the prompt: whatever the plugins beneath it draw there (say, [Claude Tabs](https://github.com/tripolskiydigital/claude-tabs)) stays, with the links in their own outlined card below.
+It is built on Claude Code's **mods** (plugins of function hooks), so it does not patch the Claude app. It shares the band above the prompt: whatever the plugins beneath it draw there (say, [Claude Tabs](https://github.com/tripolskiydigital/claude-tabs)) stays, with the links row below it.
 
 ## Requirements
 

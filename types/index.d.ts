@@ -8,7 +8,7 @@ export type PinnedLink = { url: string; title: string }
 export type RecentLink = { url: string; title: string }
 
 /** What the band shows under its row. */
-export type Section = 'recent' | 'add' | null
+export type Section = 'add' | null
 
 /** The add form: the fields as typed, the scope picked, and the pin edited, if any. */
 export type Draft = {
@@ -31,6 +31,8 @@ declare module 'claude-code' {
       favicons: Record<string, string | null>
       projectName: string
       lang: Lang
+      /** Whether the «All» pane is open: the button is lit while it is. */
+      paneOpen: boolean
     }
   }
 }
