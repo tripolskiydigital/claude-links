@@ -13,8 +13,6 @@ import {
   isPrivateHost,
   labelBudget,
   labelOf,
-  chipWidth,
-  dropIndexX,
   dropIndexY,
   matches,
   move,
@@ -342,19 +340,16 @@ async function sortBy($: Engine, s: Scope, by: SortBy): Promise<void> {
 /** Rows an entry of the «All» pane takes with the gap after it: name, URL, gap. */
 const PANE_ENTRY_ROWS = 3
 
-/** The bar's chip widths as last drawn: where a dragged chip lands is read off them. */
-let barWidths: number[] = []
-
 /** A drag handle reports: a press starts a drag, moves aim it, the release drops it. */
 async function onDrag($: Engine, element: string, data: unknown): Promise<void> {
-  const m = /^drag-(bar|pane)-(project|session)-(\d+)$/.exec(element)
+  const m = /^drag-(pane)-(project|session)-(\d+)$/.exec(element)
   if (m === null || typeof data !== 'object' || data === null) return
   const where = m[1] as Drag['where']
   const s = m[2] as Scope
   const from = Number(m[3])
-  const { kind, dx = 0, dy = 0 } = data as { kind?: string; dx?: number; dy?: number }
+  const { kind, dy = 0 } = data as { kind?: string; dx?: number; dy?: number }
   const count = (s === 'project' ? await read($, projectLinks) : await read($, sessionLinks)).length
-  const to = where === 'bar' ? dropIndexX(from, dx, barWidths) : dropIndexY(from, dy, count, PANE_ENTRY_ROWS)
+  const to = dropIndexY(from, dy, count, PANE_ENTRY_ROWS)
   if (kind === 'start' || kind === 'move') {
     const next: Drag = { where, scope: s, from, to }
     if (changed(await read($, drag), next)) await update($, drag, () => next)
@@ -422,6 +417,8 @@ type Kit = {
   quiet: { hover?: { backgroundColor: string } }
   /** A pane entry's frame: on the desktop a thin rounded grey border, so its hover fill is rounded too. */
   card: { borderStyle?: string; borderColor?: string; paddingX?: number }
+  /** A bar chip's frame: a rounded border no one sees, so its hover fill is rounded. */
+  chip: { borderStyle?: string; borderColor?: string; paddingX?: number }
   icons: Record<string, string | null>
 }
 
@@ -438,6 +435,7 @@ function kitOf(els: ReturnType<EngineInterface['ui']['resolve']>, surface: strin
     hover: isTerminal ? 'userMessageBackground' : 'rgba(128, 128, 128, 0.14)',
     quiet: isTerminal ? {} : { hover: { backgroundColor: 'transparent' } },
     card: isTerminal ? {} : { borderStyle: 'round', borderColor: 'inactive', paddingX: 1 },
+    chip: isTerminal ? {} : { borderStyle: 'round', borderColor: 'rgba(0, 0, 0, 0)', paddingX: 1 },
     icons,
   }
 }
@@ -682,12 +680,9 @@ export const register: Register = on => {
     const k = kitOf($.ui.resolve(e), e.surface, icons)
     const { Box, Text, Button } = k
     const budget = labelBudget(e.props.bodyColumns)
-    const barDrag = dragged?.where === 'bar' && dragged.scope === sc ? dragged : null
 
     const links = sc === 'project' ? pLinks : sLinks
     const onBar = links.slice(0, BAR_LINKS)
-    // Read back by a drop on the bar (a module variable: a drawing writes no state).
-    barWidths = onBar.map(link => chipWidth(truncate(labelOf(link), budget)) + 2)
     const total = pLinks.length + sLinks.length
 
     const scopeSwitch = (
@@ -713,9 +708,8 @@ export const register: Register = on => {
         onBar.map((link, i) => {
           const name = labelOf(link)
           const shown = truncate(name, budget)
-          const isMoving = barDrag?.from === i
-          const isTarget = barDrag !== null && barDrag.to === i && barDrag.from !== i
-          const handle = dragHandle(k, `drag-bar-${sc}-${i}`, isMoving)
+          // The whole chip lights under the pointer, rounded: on the desktop only
+          // a Box with a border is drawn rounded, so the chip has an unseen one.
           return (
             <Box
               key={`chip-${i}`}
@@ -723,11 +717,11 @@ export const register: Register = on => {
               flexDirection="row"
               alignItems="center"
               flexShrink={0}
-              {...(isTarget ? { backgroundColor: 'userMessageBackground' } : k.base)}
-              hover={{ backgroundColor: isTarget ? 'userMessageBackground' : k.hover }}
+              columnGap={1}
+              {...k.chip}
+              {...k.base}
+              hover={{ backgroundColor: k.hover }}
             >
-              {/* Drag the handle along the bar to move the link. */}
-              {handle}
               {linkIcon(k, link.url)}
               <Button key={`open-${i}`} label={shown} plain {...k.quiet} onPress={() => void openUrl($, link.url)} />
               {shown !== name && (

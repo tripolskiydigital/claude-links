@@ -2,7 +2,6 @@ import { expect, test } from 'claude-code/testing'
 
 import { langOf, t } from '../hooks/i18n'
 import {
-  dropIndexX,
   dropIndexY,
   labelBudget,
   labelOf,
@@ -61,8 +60,8 @@ test('a name is cut to a quarter of the links block', async () => {
   expect(truncate('short', 10)).toBe('short')
   expect(truncate('a very long link name', 10)).toBe('a very lo…')
   expect(truncate('a very long link name', 10, false)).toBe('a very lon')
-  // 144 cells less 44 of controls: 100 for the links, 25 each, 4 of them icon.
-  expect(labelBudget(144)).toBe(21)
+  // 136 cells less 36 of controls: 100 for the links, 25 each, 3 of them icon and padding.
+  expect(labelBudget(136)).toBe(22)
   expect(labelBudget(10)).toBe(6)
 })
 
@@ -103,10 +102,6 @@ test('a dragged entry lands where the pointer went', async () => {
   expect(dropIndexY(0, 4, 5)).toBe(2)
   expect(dropIndexY(3, -9, 5)).toBe(0)
   expect(dropIndexY(1, 0, 5)).toBe(1)
-  // The bar: chips 10, 20 and 10 cells wide.
-  expect(dropIndexX(0, 18, [10, 20, 10])).toBe(1)
-  expect(dropIndexX(0, 30, [10, 20, 10])).toBe(2)
-  expect(dropIndexX(2, -40, [10, 20, 10])).toBe(0)
 })
 
 test('a page head gives its title and its icons, SVG first', async () => {

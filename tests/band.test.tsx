@@ -140,18 +140,10 @@ test('a row another plugin drew in the band stays above the links', async ($, on
   await ui.unmount()
 })
 
-test('pinned links reorder by dragging, on the bar and in the pane, and sort from the header', async ($, on) => {
+test('pinned links reorder by dragging in the pane, and sort from the header', async ($, on) => {
   const ran: string[] = []
   stubs(on, ran, { 'project:/p/alpha': PINS.slice(0, 3) })
   await $.session.start({ cwd: '/p/alpha', surface: 'desktop', isInteractive: true } as never)
-
-  const bar = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  // Drag the first chip far right: it lands last of the three.
-  await bar.pointer({ type: 'down', x: 0, y: 0, button: 'left', in: 'drag-bar-project-0' })
-  await bar.pointer({ type: 'move', x: 200, y: 0, button: 'left', in: 'drag-bar-project-0' })
-  await bar.pointer({ type: 'up', x: 200, y: 0, button: 'left', in: 'drag-bar-project-0' })
-  await bar.press({ key: 'open-2' })
-  await bar.unmount()
 
   const pane = await $.ui.mount({
     plugin: 'links-bar',
@@ -177,8 +169,8 @@ test('pinned links reorder by dragging, on the bar and in the pane, and sort fro
   await pane.unmount()
 
   expect(ran.filter(r => r.startsWith('open '))).toEqual([
-    'open https://site0.com/page',
-    'open https://site2.com/page',
+    // Dragged one down: site1 leads; sorted by link: site0 leads again.
+    'open https://site1.com/page',
     'open https://site0.com/page',
   ])
 })

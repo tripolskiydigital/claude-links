@@ -23,8 +23,8 @@ export type Draft = {
 /** The sort last pressed on a list: by name or link, A→Z or Z→A. */
 export type LinkSort = { by: 'title' | 'url'; dir: 'asc' | 'desc' }
 
-/** A link being dragged: on the bar or in the «All» pane, in which list, from where to where. */
-export type Drag = { where: 'bar' | 'pane'; scope: Scope; from: number; to: number }
+/** A link being dragged in the «All» pane: in which list, from where to where. */
+export type Drag = { where: 'pane'; scope: Scope; from: number; to: number }
 
 declare module 'claude-code' {
   interface PluginState {

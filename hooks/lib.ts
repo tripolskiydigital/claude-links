@@ -130,9 +130,9 @@ export function isPrivateHost(host: string): boolean {
  * Cells the bar's own controls take beside the links: the scope switch, `+`,
  * «Recent» and «All», with the gaps between them.
  */
-const CONTROLS_CELLS = 44
+const CONTROLS_CELLS = 36
 /** The favicon and the chip's padding, in cells. */
-const CHIP_CHROME_CELLS = 4
+const CHIP_CHROME_CELLS = 3
 
 /**
  * How many characters of a link's name fit in a quarter of the links' block,
@@ -242,29 +242,6 @@ export function dropIndexY(from: number, dy: number, count: number, rows = ENTRY
   return Math.max(0, Math.min(count - 1, from + Math.round(dy / rows)))
 }
 
-/**
- * Where a chip of the bar dragged `dx` cells lands: the chip whose middle is
- * nearest the dragged chip's middle, the chips being `widths` cells wide.
- */
-export function dropIndexX(from: number, dx: number, widths: readonly number[]): number {
-  let left = 0
-  const middles = widths.map(w => {
-    const middle = left + w / 2
-    left += w
-    return middle
-  })
-  const moved = (middles[from] ?? 0) + dx
-  let best = from
-  for (let i = 0; i < middles.length; i++) {
-    if (Math.abs(middles[i]! - moved) < Math.abs(middles[best]! - moved)) best = i
-  }
-  return best
-}
-
-/** A chip's width in cells: favicon, name, padding and the gap after it. */
-export function chipWidth(shown: string): number {
-  return [...shown].length + 5
-}
 
 /** What a page's head says about it: its title and the icons it declares, best first. */
 export type PageMeta = { title: string; icons: string[] }
