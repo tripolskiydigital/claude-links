@@ -130,17 +130,17 @@ export function isPrivateHost(host: string): boolean {
  * Cells the bar's own controls take beside the links: the scope switch, `+`,
  * «Recent» and «All», with the gaps between them.
  */
-const CONTROLS_CELLS = 36
-/** The favicon and the chip's padding, in cells. */
-const CHIP_CHROME_CELLS = 3
+const CONTROLS_CELLS = 40
+/** The favicon and the chip's padding and gap, in cells. */
+const CHIP_CHROME_CELLS = 4
 
 /**
- * How many characters of a link's name fit in a quarter of the links' block,
- * the block being the band's width less the controls.
+ * How many characters of a link's name fit when the bar's `count` links share
+ * the room the controls leave: one link takes it all, four a quarter each.
  */
-export function labelBudget(bodyColumns: number): number {
+export function labelBudget(bodyColumns: number, count = BAR_LINKS): number {
   const block = Math.max(24, bodyColumns - CONTROLS_CELLS)
-  return Math.max(6, Math.floor(block / BAR_LINKS) - CHIP_CHROME_CELLS)
+  return Math.max(6, Math.floor(block / Math.max(1, count)) - CHIP_CHROME_CELLS)
 }
 
 /** Moves the entry at `index` by `delta` places, clamped to the list. */

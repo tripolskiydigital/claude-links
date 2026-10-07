@@ -52,11 +52,12 @@ test('the bar shows four pinned links of the scope and opens one', async ($, on)
     const ui = await $.ui.mount({ ...BAND, surface })
     expect(await ui.find({ key: 'chip-3' })).toBeDefined()
     expect(await ui.find({ key: 'chip-4' })).toBeUndefined()
-    // The terminal opens a link with its Button; the desktop's chip is a Link the app opens.
-    if (surface === 'terminal') await ui.press({ key: 'open-1' })
+    // A click on a chip's name opens its link.
+    await ui.pointer({ type: 'down', x: 0, y: 0, button: 'left', in: 'name-1' })
+    await ui.pointer({ type: 'up', x: 0, y: 0, button: 'left', in: 'name-1' })
     await ui.unmount()
   }
-  expect(ran.filter(r => r.startsWith('open '))).toEqual(['open https://site1.com/page'])
+  expect(ran.filter(r => r.startsWith('open '))).toEqual(['open https://site1.com/page', 'open https://site1.com/page'])
 })
 
 test('a recent link pins to the session, a typed one to the project', async ($, on) => {

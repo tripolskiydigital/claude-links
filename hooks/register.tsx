@@ -417,7 +417,6 @@ type Kit = {
   quiet: { hover?: { backgroundColor: string } }
   /** A pane entry's frame: on the desktop a thin rounded grey border, so its hover fill is rounded too. */
   card: { borderStyle?: string; borderColor?: string; paddingX?: number }
-  Link?: Elements['desktop']['Link']
   icons: Record<string, string | null>
 }
 
@@ -434,8 +433,6 @@ function kitOf(els: ReturnType<EngineInterface['ui']['resolve']>, surface: strin
     hover: isTerminal ? 'userMessageBackground' : 'rgba(128, 128, 128, 0.14)',
     quiet: isTerminal ? {} : { hover: { backgroundColor: 'transparent' } },
     card: isTerminal ? {} : { borderStyle: 'round', borderColor: 'inactive', paddingX: 1 },
-    // On the desktop a Link opens in a click; the terminal keeps the Button.
-    ...(!isTerminal && 'Link' in els ? { Link: els.Link } : {}),
     icons,
   }
 }
@@ -634,6 +631,13 @@ export const register: Register = on => {
   // The pane's close mark or Escape closes it too: «All» lights only while it is open.
   on('ui.message', async ($, e, next) => {
     if (e.module.endsWith('drag-handle.tsx')) await onDrag($, e.element, e.data)
+    if (e.module.endsWith('link-label.tsx')) {
+      // The label names its chip; the link is read here, never taken from the post.
+      const i = Number(/^name-(\d+)$/.exec(e.element)?.[1] ?? -1)
+      const list = (await read($, scope)) === 'project' ? await read($, projectLinks) : await read($, sessionLinks)
+      const link = list[i]
+      if (link !== undefined && i < BAR_LINKS) await openUrl($, link.url)
+    }
     if (e.module.endsWith('text-field.tsx') && typeof e.data === 'object' && e.data !== null) {
       const { kind, value } = e.data as { kind?: string; value?: unknown }
       const text = typeof value === 'string' ? value : null
@@ -679,7 +683,7 @@ export const register: Register = on => {
     ])
     const k = kitOf($.ui.resolve(e), e.surface, icons)
     const { Box, Text, Button } = k
-    const budget = labelBudget(e.props.bodyColumns)
+    const budget = labelBudget(e.props.bodyColumns, Math.min(BAR_LINKS, (sc === 'project' ? pLinks : sLinks).length))
 
     const links = sc === 'project' ? pLinks : sLinks
     const onBar = links.slice(0, BAR_LINKS)
@@ -709,8 +713,8 @@ export const register: Register = on => {
           const name = labelOf(link)
           const shown = truncate(name, budget)
           // The whole chip lights under the pointer (the desktop rounds a Box's
-          // fill a little). The name is a Link, not a Button: a Button under the
-          // pointer always lights on its own, and only the chip should.
+          // fill a little). The name is the mod's own text (link-label.tsx): a
+          // Button lights on its own under the pointer, a Link is drawn blue.
           return (
             <Box
               key={`chip-${i}`}
@@ -723,8 +727,8 @@ export const register: Register = on => {
               hover={{ backgroundColor: k.hover }}
             >
               {linkIcon(k, link.url)}
-              {k.Link !== undefined ? (
-                <k.Link href={link.url} label={shown} />
+              {k.Client !== undefined ? (
+                <k.Client key={`name-${i}`} module="./link-label.tsx" props={{ label: shown, url: link.url }} />
               ) : (
                 <Button key={`open-${i}`} label={shown} plain {...k.quiet} onPress={() => void openUrl($, link.url)} />
               )}
@@ -861,7 +865,6 @@ export const register: Register = on => {
       <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1}>
         <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={1}>
           {scopeSwitch}
-          {chips}
           <Box key="add-box" flexShrink={0}>
             <Button
               key="add"
@@ -870,6 +873,7 @@ export const register: Register = on => {
               onPress={() => void toggleAdd($)}
             />
           </Box>
+          {chips}
         </Box>
         <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
           <Box key="recent-anchor" position="relative" flexShrink={0}>

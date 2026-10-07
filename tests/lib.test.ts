@@ -60,8 +60,10 @@ test('a name is cut to a quarter of the links block', async () => {
   expect(truncate('short', 10)).toBe('short')
   expect(truncate('a very long link name', 10)).toBe('a very lo…')
   expect(truncate('a very long link name', 10, false)).toBe('a very lon')
-  // 136 cells less 36 of controls: 100 for the links, 25 each, 3 of them icon and padding.
-  expect(labelBudget(136)).toBe(22)
+  // 140 cells less 40 of controls: 100 for the links, shared by those on the bar.
+  expect(labelBudget(140)).toBe(21)
+  expect(labelBudget(140, 2)).toBe(46)
+  expect(labelBudget(140, 1)).toBe(96)
   expect(labelBudget(10)).toBe(6)
 })
 
