@@ -361,7 +361,7 @@ type Kit = {
   hover: string
   /** A Button inside a hovered row: the row's fill is enough. */
   quiet: { hover?: { backgroundColor: string } }
-  /** A pane entry's frame: on the desktop a rounded, unseen border, so its fill is rounded too. */
+  /** A pane entry's frame: on the desktop a thin rounded grey border, so its hover fill is rounded too. */
   card: { borderStyle?: string; borderColor?: string; paddingX?: number }
   icons: Record<string, string | null>
 }
@@ -378,7 +378,7 @@ function kitOf(els: ReturnType<EngineInterface['ui']['resolve']>, surface: strin
     base: isTerminal ? {} : { backgroundColor: 'transparent' },
     hover: isTerminal ? 'userMessageBackground' : 'rgba(128, 128, 128, 0.14)',
     quiet: isTerminal ? {} : { hover: { backgroundColor: 'transparent' } },
-    card: isTerminal ? {} : { borderStyle: 'round', borderColor: 'transparent', paddingX: 1 },
+    card: isTerminal ? {} : { borderStyle: 'round', borderColor: 'inactive', paddingX: 1 },
     icons,
   }
 }

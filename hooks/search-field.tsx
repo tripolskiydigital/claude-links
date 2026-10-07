@@ -45,7 +45,7 @@ const SearchField: ClientModule<Props, State> = (props, surface) => {
       ) : (
         <Text wrap="truncate-end">{`${value}${props.isActive ? '▏' : ''}`}</Text>
       )}
-      <Text dimColor>⌕</Text>
+      <Text>🔍</Text>
     </Box>
   )
 }
