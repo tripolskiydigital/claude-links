@@ -296,7 +296,8 @@ test('fields read control characters as chords and type no unprintable ones', as
   on('process.run', ($, e) => ({
     value: {
       exitCode: e.argv[0] === 'pbpaste' ? 0 : 1,
-      stdout: e.argv[0] === 'pbpaste' ? 'pasted' : '',
+      // UTF-8 only when asked for it, as pbpaste writes on a Cyrillic Mac.
+      stdout: e.argv[0] === 'pbpaste' ? (e.init?.env?.['__CF_USER_TEXT_ENCODING']?.includes('8000100') ? 'pasted' : '\uFFFD') : '',
       stderr: '',
       isStdoutTruncated: false,
       isStderrTruncated: false,

@@ -539,7 +539,12 @@ function linkRow(
  */
 async function readClipboard($: Engine): Promise<string> {
   try {
-    const got = await $.process.run(['pbpaste'], { timeoutMs: 3_000 })
+    // pbpaste writes in the user's text encoding (MacCyrillic here, say), and
+    // stdout is read as UTF-8: Cyrillic came out as �. UTF-8 is asked for.
+    const got = await $.process.run(['pbpaste'], {
+      timeoutMs: 3_000,
+      env: { __CF_USER_TEXT_ENCODING: '0x1F5:0x8000100:0x8000100', LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' },
+    })
     return got.exitCode === 0 ? got.stdout.replace(/[\r\n\t]+/g, ' ').trim() : ''
   } catch {
     return ''
