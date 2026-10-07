@@ -38,6 +38,8 @@ declare module 'claude-code' {
       paneOpen: boolean
       /** The «All» pane's search text. */
       search: string
+      /** Whether the search field holds the keys (its border is white then). */
+      searchActive: boolean
       drag: Drag | null
     }
   }

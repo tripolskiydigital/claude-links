@@ -160,7 +160,8 @@ test('pinned links reorder by dragging, on the bar and in the pane, and sort fro
   await pane.press({ key: 'all-project-0-open' })
 
   // The search keeps the pinned links that match.
-  await pane.input({ key: 'search', text: 'site2', kind: 'change' })
+  await pane.pointer({ type: 'down', x: 2, y: 1, button: 'left', in: 'search' })
+  for (const key of [...'site2']) await pane.key({ key, in: 'search' })
   expect(await pane.find({ key: 'all-project-2-open' })).toBeDefined()
   expect(await pane.find({ key: 'all-project-0-open' })).toBeUndefined()
   await pane.unmount()

@@ -42,6 +42,7 @@ const projectName = atom({ plugin: 'links-bar', key: 'projectName' } as const, '
 const lang = atom({ plugin: 'links-bar', key: 'lang' } as const, 'en')
 const paneOpen = atom({ plugin: 'links-bar', key: 'paneOpen' } as const, false)
 const search = atom({ plugin: 'links-bar', key: 'search' } as const, '')
+const searchActive = atom({ plugin: 'links-bar', key: 'searchActive' } as const, false)
 const drag = atom({ plugin: 'links-bar', key: 'drag' } as const, null)
 
 /** Pins and the scope switch are read again this often: another session may have changed them. */
@@ -554,6 +555,20 @@ export const register: Register = on => {
   // The pane's close mark or Escape closes it too: «All» lights only while it is open.
   on('ui.message', async ($, e, next) => {
     if (e.module.endsWith('drag-handle.tsx')) await onDrag($, e.element, e.data)
+    if (e.module.endsWith('search-field.tsx') && typeof e.data === 'object' && e.data !== null) {
+      const { kind, value } = e.data as { kind?: string; value?: unknown }
+      if (kind === 'focus') await update($, searchActive, () => true)
+      if (kind === 'search' && typeof value === 'string') {
+        await update($, searchActive, () => true)
+        await update($, search, () => value)
+      }
+    }
+    return next(e)
+  })
+
+  // The ring moving to another element of the pane takes the keys from the field.
+  on('ui.focus', async ($, e, next) => {
+    if (e.requestId === PANE && e.element !== 'search') await update($, searchActive, () => false)
     return next(e)
   })
 
@@ -821,7 +836,7 @@ export const register: Register = on => {
   // «All»: every pinned link of the project and the session, in a side pane:
   // search, sort by name or link, drag by the handle, rename, move, unpin.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const [pLinks, sLinks, d, icons, pname, l, query, dragged] = await Promise.all([
+    const [pLinks, sLinks, d, icons, pname, l, query, dragged, isTyping] = await Promise.all([
       read($, projectLinks),
       read($, sessionLinks),
       read($, draft),
@@ -830,9 +845,10 @@ export const register: Register = on => {
       read($, lang),
       read($, search),
       read($, drag),
+      read($, searchActive),
     ])
     const k = kitOf($.ui.resolve(e), e.surface, icons)
-    const { Box, Text, Button, Input } = k
+    const { Box, Text, Button, Input, Client } = k
     // The name has its line to itself, the URL and the buttons the next one.
     const width = Math.max(16, e.props.bodyColumns - 16)
     const isSearching = query.trim() !== ''
@@ -857,14 +873,23 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" rowGap={1}>
-        {Input !== undefined && (
-          <Input
+        {Client !== undefined ? (
+          <Client
             key="search"
-            placeholder={t(l, 'search')}
-            value={query}
-            onInput={value => void update($, search, () => value)}
-            onSubmit={value => void update($, search, () => value)}
+            module="./search-field.tsx"
+            props={{ value: query, placeholder: t(l, 'search'), isActive: isTyping && e.props.isFocused }}
+            width="100%"
           />
+        ) : (
+          Input !== undefined && (
+            <Input
+              key="search"
+              placeholder={t(l, 'search')}
+              value={query}
+              onInput={value => void update($, search, () => value)}
+              onSubmit={value => void update($, search, () => value)}
+            />
+          )
         )}
         {groups.map(([s, list, title]) => {
           const shown = list.map((link, i) => ({ link, i })).filter(({ link }) => matches(link, query))
