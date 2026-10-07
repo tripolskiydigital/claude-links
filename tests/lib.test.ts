@@ -47,6 +47,7 @@ test('typed links gain https, non-links are refused', async () => {
 test('a name is cut to a quarter of the links block', async () => {
   expect(truncate('short', 10)).toBe('short')
   expect(truncate('a very long link name', 10)).toBe('a very lo…')
+  expect(truncate('a very long link name', 10, false)).toBe('a very lon')
   // 144 cells less 44 of controls: 100 for the links, 25 each, 4 of them icon.
   expect(labelBudget(144)).toBe(21)
   expect(labelBudget(10)).toBe(6)

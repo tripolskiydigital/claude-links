@@ -98,10 +98,11 @@ export function labelOf(link: { url: string; title: string }): string {
   return link.title.trim() !== '' ? link.title.trim() : shortUrl(link.url)
 }
 
-/** The text cut to `max` characters with an ellipsis; whole when it fits. */
-export function truncate(text: string, max: number): string {
+/** The text cut to `max` characters, with an ellipsis unless `ellipsis` is false; whole when it fits. */
+export function truncate(text: string, max: number, ellipsis = true): string {
   const chars = [...text]
-  return chars.length <= max ? text : `${chars.slice(0, Math.max(1, max - 1)).join('')}…`
+  if (chars.length <= max) return text
+  return ellipsis ? `${chars.slice(0, Math.max(1, max - 1)).join('')}…` : chars.slice(0, max).join('')
 }
 
 /** A URL's host, `www.` kept (it is what the server answers to); '' for none. */

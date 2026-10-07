@@ -288,6 +288,14 @@ async function editPin($: Engine, s: Scope, index: number, link: PinnedLink): Pr
   )
 }
 
+/** ✎ in «Recent»: the form under the bar opens on that pin, filled in. */
+async function renamePin($: Engine, s: Scope, index: number): Promise<void> {
+  const link = (await pinsOf($, s))[index]
+  if (link === undefined) return
+  await update($, draft, () => ({ url: link.url, title: link.title, scope: s, edit: { scope: s, index } }))
+  await update($, section, () => 'add')
+}
+
 // ── Drawing ─────────────────────────────────────────────────────────────────
 
 const PANE = 'links-bar'
@@ -358,7 +366,7 @@ function linkRow(
         {linkIcon(k, link.url)}
         <Button
           key={`${key}-open`}
-          label={truncate(labelOf(link), width)}
+          label={truncate(labelOf(link), width, false)}
           plain
           {...(isDim ? { dimColor: true } : {})}
           {...k.quiet}
@@ -546,6 +554,22 @@ export const register: Register = on => {
     // «Recent» as a tab's recent sessions in the tabs mod: hovering the button
     // shows the list above it, sized to its rows; the pointer may move into it.
     const recentWidth = Math.max(16, Math.min(40, Math.floor(e.props.bodyColumns / 3)))
+    // Two columns, «Project» and «Session», named once in the header: 📌 pins the
+    // link there, ✓ says it is pinned there and unpins it; ✎ renames a pinned one.
+    const columnWidth = Math.max([...t(l, 'project')].length, [...t(l, 'session')].length) + 2
+    const columns = (cells: [RenderChildren, RenderChildren, RenderChildren]) => (
+      <Box flexDirection="row" alignItems="center" flexShrink={0}>
+        <Box width={columnWidth} justifyContent="center">
+          {cells[0]}
+        </Box>
+        <Box width={columnWidth} justifyContent="center">
+          {cells[1]}
+        </Box>
+        <Box width={3} justifyContent="center">
+          {cells[2]}
+        </Box>
+      </Box>
+    )
     const recentList = (
       <Box
         position="absolute"
@@ -560,38 +584,58 @@ export const register: Register = on => {
         borderColor="inactive"
         backgroundColor="userMessageBackground"
       >
-        <Text dimColor>{t(l, 'recentTitle')}</Text>
+        <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={2}>
+          <Text dimColor>{t(l, 'recentTitle')}</Text>
+          {rec.length > 0 &&
+            columns([
+              <Text dimColor>{t(l, 'project')}</Text>,
+              <Text dimColor>{t(l, 'session')}</Text>,
+              null,
+            ])}
+        </Box>
         {rec.length === 0 && <Text dimColor>{t(l, 'recentEmpty')}</Text>}
         {rec.map((link, i) => {
-          const inProject = pLinks.some(p => p.url === link.url)
-          const inSession = sLinks.some(p => p.url === link.url)
+          const projectIndex = pLinks.findIndex(p => p.url === link.url)
+          const sessionIndex = sLinks.findIndex(p => p.url === link.url)
+          const pinCell = (s: Scope, index: number) =>
+            index >= 0 ? (
+              <Button key={`recent-${s}-${i}`} label="✓" plain onPress={() => void unpin($, s, index)} />
+            ) : (
+              <Button key={`recent-${s}-${i}`} label="📌" plain dimColor onPress={() => void pin($, s, link)} />
+            )
+          // Rename the pin the bar shows now, else the other one.
+          const editable: [Scope, number] | null =
+            (sc === 'session' ? sessionIndex : projectIndex) >= 0
+              ? [sc, sc === 'session' ? sessionIndex : projectIndex]
+              : projectIndex >= 0
+                ? ['project', projectIndex]
+                : sessionIndex >= 0
+                  ? ['session', sessionIndex]
+                  : null
           return (
             <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={2}>
               <Box flexDirection="row" alignItems="center" columnGap={1}>
                 {linkIcon(k, link.url)}
                 <Button
                   key={`recent-${i}-open`}
-                  label={truncate(labelOf(link), recentWidth)}
+                  label={truncate(labelOf(link), recentWidth, false)}
                   plain
                   onPress={() => void openUrl($, link.url)}
                 />
               </Box>
-              <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
-                <Button
-                  key={`recent-project-${i}`}
-                  label={inProject ? `✓ ${t(l, 'project')}` : t(l, 'pinProject')}
-                  plain
-                  dimColor
-                  onPress={() => void (inProject || pin($, 'project', link))}
-                />
-                <Button
-                  key={`recent-session-${i}`}
-                  label={inSession ? `✓ ${t(l, 'session')}` : t(l, 'pinSession')}
-                  plain
-                  dimColor
-                  onPress={() => void (inSession || pin($, 'session', link))}
-                />
-              </Box>
+              {columns([
+                pinCell('project', projectIndex),
+                pinCell('session', sessionIndex),
+                editable !== null ? (
+                  <Button
+                    key={`recent-edit-${i}`}
+                    label="✎"
+                    plain
+                    dimColor
+                    onPress={() => void renamePin($, editable[0], editable[1])}
+                  />
+                ) : null,
+              ])}
             </Box>
           )
         })}

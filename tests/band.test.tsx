@@ -64,6 +64,13 @@ test('a recent link pins to the session, a typed one to the project', async ($, 
   expect(await ui.find({ key: 'open-0' })).toBeUndefined()
 
   await ui.press({ key: 'recent-session-0' })
+  // Pinned there now: the cell is ✓, and a press would unpin it.
+  expect(await ui.find({ key: 'recent-edit-0' })).toBeDefined()
+  // ✎ opens the form under the bar on that pin; a new name is saved.
+  await ui.press({ key: 'recent-edit-0' })
+  await ui.input({ key: 'draft-title', text: 'Kan board', kind: 'change' })
+  await ui.press({ key: 'draft-save' })
+  expect(await ui.find({ key: 'draft-title' })).toBeUndefined()
 
   await ui.press({ key: 'add' })
   await ui.input({ key: 'draft-url', text: 'figma.com/file/x', kind: 'change' })
