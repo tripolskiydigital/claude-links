@@ -172,10 +172,17 @@ function escapeXml(text: string): string {
 export const ICON_SIZE = 16
 export const ICON_BOX = 20
 
-/** A link's icon: its favicon, or its host's first letter on a square of the host's color. */
-export function faviconSvg(uri: string | null | undefined, host: string): string {
+/** A desktop button's height in CSS pixels: a bar chip's icon is centred in it. */
+export const BUTTON_HEIGHT = 28
+
+/**
+ * A link's icon: its favicon, or its host's first letter on a square of the
+ * host's color; `height` taller than the box centres it in that height.
+ */
+export function faviconSvg(uri: string | null | undefined, host: string, height = ICON_BOX): string {
   const pad = (ICON_BOX - ICON_SIZE) / 2
-  const box = `x="${pad}" y="${pad}" width="${ICON_SIZE}" height="${ICON_SIZE}"`
+  const top = (height - ICON_SIZE) / 2
+  const box = `x="${pad}" y="${top}" width="${ICON_SIZE}" height="${ICON_SIZE}"`
   let body: string
   if (uri != null && uri !== '') {
     body = `<image href="${escapeXml(uri)}" ${box} preserveAspectRatio="xMidYMid meet"/>`
@@ -185,11 +192,12 @@ export function faviconSvg(uri: string | null | undefined, host: string): string
     for (const ch of name) hash = (hash * 31 + ch.codePointAt(0)!) >>> 0
     const letter = (name.match(/[\p{L}\p{N}]/u)?.[0] ?? '?').toUpperCase()
     const mid = ICON_BOX / 2
+    const midY = height / 2
     body =
       `<rect ${box} rx="4" fill="${PALETTE[hash % PALETTE.length]}"/>` +
-      `<text x="${mid}" y="${mid}" font-size="10" font-weight="600" font-family="-apple-system, Helvetica, Arial, sans-serif" text-anchor="middle" dominant-baseline="central" fill="#fff">${escapeXml(letter)}</text>`
+      `<text x="${mid}" y="${midY}" font-size="10" font-weight="600" font-family="-apple-system, Helvetica, Arial, sans-serif" text-anchor="middle" dominant-baseline="central" fill="#fff">${escapeXml(letter)}</text>`
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${ICON_BOX}" height="${ICON_BOX}" viewBox="0 0 ${ICON_BOX} ${ICON_BOX}">${body}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${ICON_BOX}" height="${height}" viewBox="0 0 ${ICON_BOX} ${height}">${body}</svg>`
 }
 
 /** The image types a favicon may come as, by curl's content type. */

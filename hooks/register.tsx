@@ -5,6 +5,7 @@ import type { Drag, Draft, Lang, LinkSort, PinnedLink, Scope } from '../types'
 import { langOf, t } from './i18n'
 import {
   BAR_LINKS,
+  BUTTON_HEIGHT,
   ICON_BOX,
   asLinks,
   faviconMime,
@@ -528,6 +529,9 @@ function linkRow(
   )
 }
 
+/** Room before a bar chip's name for the favicon laid over its button: figure spaces keep their width. */
+const ICON_ROOM = '\u2007\u2007\u2007'
+
 /** The text fields the mod draws: a field's key is where its posts go. */
 const FIELDS = ['search', 'draft-title', 'draft-url'] as const
 
@@ -636,13 +640,6 @@ export const register: Register = on => {
   // The pane's close mark or Escape closes it too: «All» lights only while it is open.
   on('ui.message', async ($, e, next) => {
     if (e.module.endsWith('drag-handle.tsx')) await onDrag($, e.element, e.data)
-    if (e.module.endsWith('link-label.tsx')) {
-      // The label names its chip; the link is read here, never taken from the post.
-      const i = Number(/^name-(\d+)$/.exec(e.element)?.[1] ?? -1)
-      const list = (await read($, scope)) === 'project' ? await read($, projectLinks) : await read($, sessionLinks)
-      const link = list[i]
-      if (link !== undefined && i < BAR_LINKS) await openUrl($, link.url)
-    }
     if (e.module.endsWith('text-field.tsx') && typeof e.data === 'object' && e.data !== null) {
       const { kind, value } = e.data as { kind?: string; value?: unknown }
       const text = typeof value === 'string' ? value : null
@@ -717,46 +714,46 @@ export const register: Register = on => {
         onBar.map((link, i) => {
           const name = labelOf(link)
           const shown = truncate(name, budget)
-          // The whole chip lights under the pointer, its fill rounded. Every chip
-          // is built alike and sits alone in a wrapper of its own: the desktop
-          // rounded only the first when they were siblings in the bar's row. The
-          // name is the mod's own text (link-label.tsx): a Button lights on its
-          // own under the pointer, a Link is drawn blue.
+          // The chip is the desktop's own button, so it lights rounded and as
+          // tall as «Recent» and «All». The favicon lies over the button's left
+          // end, room kept for it by figure spaces (plain ones would collapse).
+          const host = hostOf(link.url)
           return (
             <Box key={`chip-${i}`} position="relative" flexShrink={0}>
-              <Box
-                position="relative"
-                flexDirection="row"
-                alignItems="center"
-                paddingRight={1}
-                {...k.base}
-                hover={{ backgroundColor: k.hover }}
-              >
-                {linkIcon(k, link.url)}
-                {k.Client !== undefined ? (
-                  <k.Client key={`name-${i}`} module="./link-label.tsx" props={{ label: shown, url: link.url }} />
-                ) : (
-                  <Button key={`open-${i}`} label={shown} plain {...k.quiet} onPress={() => void openUrl($, link.url)} />
-                )}
-                {/* The full name and the URL, over the chip under the pointer. */}
-                <Box
-                  position="absolute"
-                  bottom={2}
-                  left={0}
-                  display="none"
-                  hover={{ display: 'flex' }}
-                  flexDirection="column"
-                  minWidth={Math.min(64, Math.max([...name].length, shortUrl(link.url).length) + 4)}
-                  paddingX={1}
-                  borderStyle="round"
-                  borderColor="inactive"
-                  backgroundColor="userMessageBackground"
-                >
-                  <Text>{name}</Text>
-                  <Text dimColor wrap="truncate">
-                    {shortUrl(link.url)}
-                  </Text>
+              <Button
+                key={`open-${i}`}
+                label={k.Svg !== undefined ? `${ICON_ROOM}${shown}` : shown}
+                plain
+                onPress={() => void openUrl($, link.url)}
+              />
+              {k.Svg !== undefined && (
+                <Box position="absolute" top={0} left={1}>
+                  <k.Svg
+                    source={faviconSvg(icons[host], host, BUTTON_HEIGHT)}
+                    alt={host}
+                    width={ICON_BOX}
+                    height={BUTTON_HEIGHT}
+                  />
                 </Box>
+              )}
+              {/* The full name and the URL, over the chip under the pointer. */}
+              <Box
+                position="absolute"
+                bottom={2}
+                left={0}
+                display="none"
+                hover={{ display: 'flex' }}
+                flexDirection="column"
+                minWidth={Math.min(64, Math.max([...name].length, shortUrl(link.url).length) + 4)}
+                paddingX={1}
+                borderStyle="round"
+                borderColor="inactive"
+                backgroundColor="userMessageBackground"
+              >
+                <Text>{name}</Text>
+                <Text dimColor wrap="truncate">
+                  {shortUrl(link.url)}
+                </Text>
               </Box>
             </Box>
           )

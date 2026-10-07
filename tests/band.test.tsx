@@ -52,9 +52,8 @@ test('the bar shows four pinned links of the scope and opens one', async ($, on)
     const ui = await $.ui.mount({ ...BAND, surface })
     expect(await ui.find({ key: 'chip-3' })).toBeDefined()
     expect(await ui.find({ key: 'chip-4' })).toBeUndefined()
-    // A click on a chip's name opens its link.
-    await ui.pointer({ type: 'down', x: 0, y: 0, button: 'left', in: 'name-1' })
-    await ui.pointer({ type: 'up', x: 0, y: 0, button: 'left', in: 'name-1' })
+    // A chip is a button: a press opens its link.
+    await ui.press({ key: 'open-1' })
     await ui.unmount()
   }
   expect(ran.filter(r => r.startsWith('open '))).toEqual(['open https://site1.com/page', 'open https://site1.com/page'])
