@@ -11,7 +11,7 @@ A mod for the **Code tab of Claude Desktop** that keeps the links you work with 
 - **Pinned links with favicons**, up to 4 on the bar. Pin a link to the **project** (every session in that folder sees it) or to **this session** only; the small **Project / Session** switch on the left picks which set the bar shows.
 - **Short and tidy**: each name takes at most a quarter of the links' room; a cut name shows in full, with its URL, when you hover it. A link with no name shows as its URL without `https://` and `www.`.
 - **+** opens two fields, the link and its name, and the choice of project or session.
-- **Recent**: hover it for a list, above the button, of the session's 10 latest links, each with **📌 Project** and **📌 Session** to pin it.
+- **Recent**: hover it for a list, above the button, of the session's 10 latest links, with a **Project** and a **Session** column: 📌 pins a link there, ✓ shows it is pinned (and unpins it), ✎ renames a pinned one.
 - **All** opens a side pane (and stays lit while it is open) with every pinned link of the project and the session: reorder (the first 4 of each list are on the bar), rename (✎), move to the other list, unpin.
 - **Speaks your language**: English, Deutsch, Français, Italiano, Español, Українська, Русский, following Claude Desktop's language setting; English otherwise.
 
