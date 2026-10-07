@@ -32,7 +32,6 @@ declare module 'claude-code' {
       draft: Draft
       /** Favicons by host: a data URI, or null when the site has none we can read. */
       favicons: Record<string, string | null>
-      projectName: string
       lang: Lang
       /** Whether the «All» pane is open: the button is lit while it is. */
       paneOpen: boolean

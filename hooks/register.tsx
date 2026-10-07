@@ -38,7 +38,6 @@ const scope = atom({ plugin: 'links-bar', key: 'scope' } as const, 'project')
 const section = atom({ plugin: 'links-bar', key: 'section' } as const, null)
 const draft = atom({ plugin: 'links-bar', key: 'draft' } as const, EMPTY_DRAFT)
 const favicons = atom({ plugin: 'links-bar', key: 'favicons' } as const, {})
-const projectName = atom({ plugin: 'links-bar', key: 'projectName' } as const, '')
 const lang = atom({ plugin: 'links-bar', key: 'lang' } as const, 'en')
 const paneOpen = atom({ plugin: 'links-bar', key: 'paneOpen' } as const, false)
 const search = atom({ plugin: 'links-bar', key: 'search' } as const, '')
@@ -533,8 +532,6 @@ export const register: Register = on => {
     await loadLang($)
     const stored = await $.store.get('scope')
     if (stored === 'project' || stored === 'session') await update($, scope, () => stored)
-    const root = await $.session.root()
-    await update($, projectName, () => root.split('/').filter(Boolean).at(-1) ?? root)
     await loadPins($)
     void refreshRecent($)
     $.clock.every(SYNC_MS, () => void loadPins($))
@@ -836,12 +833,11 @@ export const register: Register = on => {
   // «All»: every pinned link of the project and the session, in a side pane:
   // search, sort by name or link, drag by the handle, rename, move, unpin.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const [pLinks, sLinks, d, icons, pname, l, query, dragged, isTyping] = await Promise.all([
+    const [pLinks, sLinks, d, icons, l, query, dragged, isTyping] = await Promise.all([
       read($, projectLinks),
       read($, sessionLinks),
       read($, draft),
       read($, favicons),
-      read($, projectName),
       read($, lang),
       read($, search),
       read($, drag),
@@ -853,19 +849,21 @@ export const register: Register = on => {
     const width = Math.max(16, e.props.bodyColumns - 16)
     const isSearching = query.trim() !== ''
     const groups: [Scope, PinnedLink[], string][] = [
-      ['project', pLinks, t(l, 'projectSection', { name: pname })],
+      ['project', pLinks, t(l, 'project')],
       ['session', sLinks, t(l, 'sessionSection')],
     ]
 
     const sortButton = (s: Scope, list: PinnedLink[], by: SortBy) => {
       const dir = sortedAs(list, by)
       const label = t(l, by === 'title' ? 'byTitle' : 'byUrl')
-      return (
+      // As the scope switch: the active sort is the desktop's own button, its
+      // arrow the direction (↑ A→Z, ↓ Z→A); the other is plain and dim.
+      return dir === null ? (
+        <Button key={`sort-${s}-${by}`} label={label} plain dimColor onPress={() => void sortBy($, s, by)} />
+      ) : (
         <Button
           key={`sort-${s}-${by}`}
-          label={dir === null ? label : `${label} ${t(l, dir === 'asc' ? 'sortAsc' : 'sortDesc')}`}
-          plain
-          {...(dir === null ? { dimColor: true } : {})}
+          label={`${label} ${dir === 'asc' ? '↑' : '↓'}`}
           onPress={() => void sortBy($, s, by)}
         />
       )
@@ -898,8 +896,8 @@ export const register: Register = on => {
           const canDrag = !isSearching && d.edit === null && list.length > 1
           return (
             <Box key={`group-${s}`} flexDirection="column" rowGap={1}>
-              <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1} flexWrap="wrap">
-                <Text bold>{`${title} · ${list.length}`}</Text>
+              <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1}>
+                <Text bold wrap="truncate-end">{`${title} (${list.length})`}</Text>
                 {list.length > 1 && (
                   <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
                     {sortButton(s, list, 'title')}
