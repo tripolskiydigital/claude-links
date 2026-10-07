@@ -8,6 +8,7 @@ import {
   labelOf,
   matches,
   normalizeUrl,
+  parseHead,
   recentLinks,
   shortUrl,
   sortLinks,
@@ -106,4 +107,21 @@ test('a dragged entry lands where the pointer went', async () => {
   expect(dropIndexX(0, 18, [10, 20, 10])).toBe(1)
   expect(dropIndexX(0, 30, [10, 20, 10])).toBe(2)
   expect(dropIndexX(2, -40, [10, 20, 10])).toBe(0)
+})
+
+test('a page head gives its title and its icons, SVG first', async () => {
+  const html = `<html><head><title>POSMI &mdash; Menú QR &amp; más</title>
+    <link rel="apple-touch-icon" href="/apple.png" sizes="180x180">
+    <link rel="icon" href="/icon.png?v=1" sizes="512x512" type="image/png"/>
+    <link rel="shortcut icon" href="favicon-32.png" sizes="32x32">
+    <link rel="icon" href="/icon.svg?x" type="image/svg+xml"/>
+    <link rel="stylesheet" href="/a.css"></head>`
+  const meta = parseHead(html, 'https://posmi.app/menu/')
+  expect(meta.title).toBe('POSMI — Menú QR & más')
+  expect(meta.icons).toEqual([
+    'https://posmi.app/icon.svg?x',
+    'https://posmi.app/menu/favicon-32.png',
+    'https://posmi.app/icon.png?v=1',
+    'https://posmi.app/apple.png',
+  ])
 })

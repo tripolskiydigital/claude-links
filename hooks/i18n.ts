@@ -11,8 +11,6 @@ type Strings = {
   recentEmpty: string
   urlPlaceholder: string
   titlePlaceholder: string
-  pinTo: string
-  save: string
   saveEdit: string
   cancel: string
   badUrl: string
@@ -44,8 +42,6 @@ const STRINGS: Record<Lang, Strings> = {
     recentEmpty: 'No links in this session yet.',
     urlPlaceholder: 'https://…',
     titlePlaceholder: 'Name (optional)',
-    pinTo: 'Pin to:',
-    save: 'Pin',
     saveEdit: 'Save',
     cancel: 'Cancel',
     badUrl: 'That is not a link: {url}',
@@ -75,8 +71,6 @@ const STRINGS: Record<Lang, Strings> = {
     recentEmpty: 'В этой сессии пока нет ссылок.',
     urlPlaceholder: 'https://…',
     titlePlaceholder: 'Название (необязательно)',
-    pinTo: 'Закрепить в:',
-    save: 'Закрепить',
     saveEdit: 'Сохранить',
     cancel: 'Отмена',
     badUrl: 'Это не похоже на ссылку: {url}',
@@ -106,8 +100,6 @@ const STRINGS: Record<Lang, Strings> = {
     recentEmpty: 'У цій сесії ще немає посилань.',
     urlPlaceholder: 'https://…',
     titlePlaceholder: 'Назва (необовʼязково)',
-    pinTo: 'Закріпити в:',
-    save: 'Закріпити',
     saveEdit: 'Зберегти',
     cancel: 'Скасувати',
     badUrl: 'Це не схоже на посилання: {url}',
@@ -137,8 +129,6 @@ const STRINGS: Record<Lang, Strings> = {
     recentEmpty: 'In dieser Sitzung gibt es noch keine Links.',
     urlPlaceholder: 'https://…',
     titlePlaceholder: 'Name (optional)',
-    pinTo: 'Anheften an:',
-    save: 'Anheften',
     saveEdit: 'Speichern',
     cancel: 'Abbrechen',
     badUrl: 'Das ist kein Link: {url}',
@@ -168,8 +158,6 @@ const STRINGS: Record<Lang, Strings> = {
     recentEmpty: 'Aucun lien dans cette session pour le moment.',
     urlPlaceholder: 'https://…',
     titlePlaceholder: 'Nom (facultatif)',
-    pinTo: 'Épingler dans :',
-    save: 'Épingler',
     saveEdit: 'Enregistrer',
     cancel: 'Annuler',
     badUrl: 'Ce n’est pas un lien : {url}',
@@ -199,8 +187,6 @@ const STRINGS: Record<Lang, Strings> = {
     recentEmpty: 'Ancora nessun link in questa sessione.',
     urlPlaceholder: 'https://…',
     titlePlaceholder: 'Nome (facoltativo)',
-    pinTo: 'Fissa in:',
-    save: 'Fissa',
     saveEdit: 'Salva',
     cancel: 'Annulla',
     badUrl: 'Questo non è un link: {url}',
@@ -230,8 +216,6 @@ const STRINGS: Record<Lang, Strings> = {
     recentEmpty: 'Aún no hay enlaces en esta sesión.',
     urlPlaceholder: 'https://…',
     titlePlaceholder: 'Nombre (opcional)',
-    pinTo: 'Fijar en:',
-    save: 'Fijar',
     saveEdit: 'Guardar',
     cancel: 'Cancelar',
     badUrl: 'Eso no es un enlace: {url}',

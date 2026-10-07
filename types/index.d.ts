@@ -16,6 +16,8 @@ export type Draft = {
   title: string
   scope: Scope
   edit: { scope: Scope; index: number } | null
+  /** Bumped whenever the form is filled anew: the fields drop what was typed. */
+  rev: number
 }
 
 /** The sort last pressed on a list: by name or link, A→Z or Z→A. */
@@ -40,8 +42,8 @@ declare module 'claude-code' {
       paneOpen: boolean
       /** The «All» pane's search text. */
       search: string
-      /** Whether the search field holds the keys (its border is white then). */
-      searchActive: boolean
+      /** Which of the mod's text fields holds the keys (its border is white then). */
+      activeField: string | null
       drag: Drag | null
       /** The sort pressed on each list; lit while the list still stands in that order. */
       sorts: { project: LinkSort | null; session: LinkSort | null }

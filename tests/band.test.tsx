@@ -9,6 +9,16 @@ const BAND = {
 
 const PINS = Array.from({ length: 6 }, (_, i) => ({ url: `https://site${i}.com/page`, title: i === 0 ? 'A rather long name for the first pinned link' : '' }))
 
+/** Clicks one of the mod's text fields and types into it, key by key. */
+async function typeInto(
+  ui: { pointer: (e: never) => Promise<void>; key: (e: never) => Promise<void> },
+  field: string,
+  text: string,
+): Promise<void> {
+  await ui.pointer({ type: 'down', x: 1, y: 1, button: 'left', in: field } as never)
+  for (const key of [...text]) await ui.key({ key: key === ' ' ? 'space' : key, in: field } as never)
+}
+
 function stubs(
   on: Parameters<TestBody>[1],
   ran: string[],
@@ -68,16 +78,16 @@ test('a recent link pins to the session, a typed one to the project', async ($, 
   expect(await ui.find({ key: 'recent-edit-0' })).toBeDefined()
   // ✎ opens the form under the bar on that pin; a new name is saved.
   await ui.press({ key: 'recent-edit-0' })
-  await ui.input({ key: 'draft-title', text: 'Kan board', kind: 'change' })
+  await typeInto(ui, 'draft-title', ' board')
   await ui.press({ key: 'draft-save' })
-  expect(await ui.find({ key: 'draft-title' })).toBeUndefined()
+  expect(await ui.find({ key: 'draft-save' })).toBeUndefined()
 
   await ui.press({ key: 'add' })
-  await ui.input({ key: 'draft-url', text: 'figma.com/file/x', kind: 'change' })
-  await ui.input({ key: 'draft-title', text: 'Макет', kind: 'change' })
+  await typeInto(ui, 'draft-title', 'Макет')
+  await typeInto(ui, 'draft-url', 'figma.com/file/x')
   await ui.press({ key: 'draft-save' })
   // The form closed and the project's bar holds the typed link.
-  expect(await ui.find({ key: 'draft-url' })).toBeUndefined()
+  expect(await ui.find({ key: 'draft-save' })).toBeUndefined()
   await ui.press({ key: 'open-0' })
 
   await ui.press({ key: 'scope-session' })
@@ -103,9 +113,9 @@ test('a recent link pins to the session, a typed one to the project', async ($, 
 
   // ✎ opens the form under the row; a new name is saved in place.
   await pane.press({ key: 'all-edit-project-0' })
-  await pane.input({ key: 'draft-title', text: 'Макет v2', kind: 'change' })
+  await typeInto(pane, 'draft-title', ' v2')
   await pane.press({ key: 'draft-save' })
-  expect(await pane.find({ key: 'draft-url' })).toBeUndefined()
+  expect(await pane.find({ key: 'draft-save' })).toBeUndefined()
 
   // ✕ unpins.
   await pane.press({ key: 'all-unpin-session-0' })

@@ -19,17 +19,18 @@ import {
   matches,
   move,
   normalizeUrl,
+  parseHead,
   recentLinks,
   shortUrl,
   sortLinks,
   sortedAs,
   truncate,
 } from './lib'
-import type { SortBy } from './lib'
+import type { PageMeta, SortBy } from './lib'
 
 type Engine = EngineInterface
 
-const EMPTY_DRAFT: Draft = { url: '', title: '', scope: 'project', edit: null }
+const EMPTY_DRAFT: Draft = { url: '', title: '', scope: 'project', edit: null, rev: 0 }
 
 const recent = atom({ plugin: 'links-bar', key: 'recent' } as const, [])
 const projectLinks = atom({ plugin: 'links-bar', key: 'projectLinks' } as const, [])
@@ -41,7 +42,7 @@ const favicons = atom({ plugin: 'links-bar', key: 'favicons' } as const, {})
 const lang = atom({ plugin: 'links-bar', key: 'lang' } as const, 'en')
 const paneOpen = atom({ plugin: 'links-bar', key: 'paneOpen' } as const, false)
 const search = atom({ plugin: 'links-bar', key: 'search' } as const, '')
-const searchActive = atom({ plugin: 'links-bar', key: 'searchActive' } as const, false)
+const activeField = atom({ plugin: 'links-bar', key: 'activeField' } as const, null)
 const drag = atom({ plugin: 'links-bar', key: 'drag' } as const, null)
 const sorts = atom({ plugin: 'links-bar', key: 'sorts' } as const, { project: null, session: null })
 
@@ -132,58 +133,88 @@ function asStoredFavicon(value: unknown): StoredFavicon | null {
   return typeof v.uri === 'string' && typeof v.at === 'number' ? { uri: v.uri, at: v.at } : null
 }
 
+/** A page fetched past this is cut: its head is what is read. */
+const MAX_PAGE_BYTES = 3_000_000
+
+async function tempPath($: Engine, name: string): Promise<string> {
+  const dir = ((await $.env.get('TMPDIR')) ?? '/tmp/').replace(/\/?$/, '/')
+  return `${dir}links-bar-${name.replace(/[^\w.-]/g, '_').slice(0, 80)}`
+}
+
+/** Pages read this load, by URL: a favicon and a title are read off one fetch. */
+const pages = new Map<string, Promise<PageMeta | null>>()
+
+/** Fetches a page with curl and reads its title and declared icons; null when it does not answer. */
+function fetchPage($: Engine, url: string): Promise<PageMeta | null> {
+  const known = pages.get(url)
+  if (known !== undefined) return known
+  const loading = (async () => {
+    try {
+      const tmp = await tempPath($, `page-${url}.html`)
+      const got = await $.process.run(
+        ['curl', '-sL', '--max-time', '8', '--max-filesize', String(MAX_PAGE_BYTES), '-o', tmp, '-w', '%{http_code} %{url_effective}', url],
+        { timeoutMs: 12_000 },
+      )
+      const [code, effective] = got.stdout.trim().split(' ')
+      if (got.exitCode !== 0 || code !== '200') return null
+      return parseHead(await $.fs.read(tmp), effective ?? url)
+    } catch {
+      return null
+    }
+  })()
+  pages.set(url, loading)
+  return loading
+}
+
+/** Downloads one picture with curl; a data URI when it is a small image, else null. */
+async function fetchImage($: Engine, source: string, tmp: string): Promise<string | null> {
+  try {
+    const got = await $.process.run(
+      ['curl', '-sL', '--max-time', '6', '--max-filesize', String(MAX_FAVICON_BYTES), '-o', tmp, '-w', '%{http_code} %{content_type}', source],
+      { timeoutMs: 10_000 },
+    )
+    const [code, ...type] = got.stdout.trim().split(' ')
+    const mime = faviconMime(type.join(' '))
+    if (got.exitCode !== 0 || code !== '200' || mime === null) return null
+    const stat = await $.fs.stat(tmp)
+    if (stat.size === 0 || stat.size > MAX_FAVICON_BYTES) return null
+    const { base64 } = await $.fs.read(tmp, { as: 'bytes' })
+    return `data:${mime};base64,${base64}`
+  } catch {
+    // curl missing, a timeout, an unreadable file.
+    return null
+  }
+}
+
 /**
- * Asks the site for /favicon.ico, then (for a public host) Google's favicon
- * service, which knows the icons a page declares in its HTML. curl writes the
- * picture to the temp folder; it is kept as a data URI.
+ * A link's favicon: the icons its page declares (`<link rel="icon">`, SVG
+ * first), then the site's /favicon.ico, then, for a public host, Google's
+ * favicon service. curl writes each picture to the temp folder.
  */
-async function fetchFavicon($: Engine, origin: string, host: string): Promise<string | null> {
-  const tmp = `${((await $.env.get('TMPDIR')) ?? '/tmp/').replace(/\/?$/, '/')}links-bar-${host.replace(/[^\w.-]/g, '_')}.icon`
-  const sources = [`${origin}/favicon.ico`]
+async function fetchFavicon($: Engine, url: string, host: string): Promise<string | null> {
+  const page = await fetchPage($, url)
+  const sources = [...(page?.icons ?? []), `${new URL(url).origin}/favicon.ico`]
   if (!isPrivateHost(host)) {
     sources.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`)
   }
+  const tmp = await tempPath($, `${host}.icon`)
   for (const source of sources) {
-    try {
-      const got = await $.process.run(
-        [
-          'curl',
-          '-sL',
-          '--max-time',
-          '6',
-          '--max-filesize',
-          String(MAX_FAVICON_BYTES),
-          '-o',
-          tmp,
-          '-w',
-          '%{http_code} %{content_type}',
-          source,
-        ],
-        { timeoutMs: 10_000 },
-      )
-      const [code, ...type] = got.stdout.trim().split(' ')
-      const mime = faviconMime(type.join(' '))
-      if (got.exitCode !== 0 || code !== '200' || mime === null) continue
-      const stat = await $.fs.stat(tmp)
-      if (stat.size === 0 || stat.size > MAX_FAVICON_BYTES) continue
-      const { base64 } = await $.fs.read(tmp, { as: 'bytes' })
-      return `data:${mime};base64,${base64}`
-    } catch {
-      // curl missing, a timeout, an unreadable file: try the next source.
-    }
+    const uri = await fetchImage($, source, tmp)
+    if (uri !== null) return uri
   }
   return null
 }
 
 async function loadFavicon($: Engine, url: string, host: string): Promise<void> {
-  const key = `favicon:${host}`
+  // v2: favicons read off the page's head; the first cache held none for such sites.
+  const key = `favicon2:${host}`
   const stored = asStoredFavicon(await $.store.get(key))
   const now = await $.clock.now()
   let uri: string | null
   if (stored !== null && (stored.uri !== '' || now - stored.at < FAVICON_RETRY_MS)) {
     uri = stored.uri === '' ? null : stored.uri
   } else {
-    uri = await fetchFavicon($, new URL(url).origin, host)
+    uri = await fetchFavicon($, url, host)
     await $.store.set(key, { uri: uri ?? '', at: now })
   }
   await update($, favicons, f => ({ ...f, [host]: uri }))
@@ -214,7 +245,7 @@ async function setScope($: Engine, s: Scope): Promise<void> {
 /** `+`: opens the add form under the bar, empty and set to the bar's scope, or closes it. */
 async function toggleAdd($: Engine): Promise<void> {
   const sc = await read($, scope)
-  await update($, draft, () => ({ ...EMPTY_DRAFT, scope: sc }))
+  await update($, draft, now => ({ ...EMPTY_DRAFT, scope: sc, rev: now.rev + 1 }))
   await update($, section, now => (now === 'add' ? null : 'add'))
 }
 
@@ -268,12 +299,23 @@ async function pin(
   }
   const next = [...list, link]
   await savePins($, s, next)
+  if (link.title === '') void fillTitle($, s, link.url)
   $.ui.toast(
     next.length > BAR_LINKS
       ? t(l, 'pinnedHidden', { max: BAR_LINKS })
       : t(l, s === 'project' ? 'pinnedProject' : 'pinnedSession', { name: labelOf(link) }),
   )
   return true
+}
+
+/** A pin made with no name takes its page's title, unless a name was given meanwhile. */
+async function fillTitle($: Engine, s: Scope, url: string): Promise<void> {
+  const title = (await fetchPage($, url))?.title.slice(0, 120) ?? ''
+  if (title === '') return
+  const list = await pinsOf($, s)
+  const i = list.findIndex(p => p.url === url && p.title === '')
+  if (i < 0) return
+  await savePins($, s, list.map((p, j) => (j === i ? { url, title } : p)))
 }
 
 async function unpin($: Engine, s: Scope, index: number): Promise<void> {
@@ -325,7 +367,7 @@ async function onDrag($: Engine, element: string, data: unknown): Promise<void> 
 }
 
 async function closeDraft($: Engine): Promise<void> {
-  await update($, draft, () => EMPTY_DRAFT)
+  await update($, draft, now => ({ ...EMPTY_DRAFT, rev: now.rev + 1 }))
   await update($, section, () => null)
 }
 
@@ -344,8 +386,8 @@ async function editPin($: Engine, s: Scope, index: number, link: PinnedLink): Pr
   await update($, section, () => null)
   await update($, draft, now =>
     now.edit?.scope === s && now.edit.index === index
-      ? EMPTY_DRAFT
-      : { url: link.url, title: link.title, scope: s, edit: { scope: s, index } },
+      ? { ...EMPTY_DRAFT, rev: now.rev + 1 }
+      : { url: link.url, title: link.title, scope: s, edit: { scope: s, index }, rev: now.rev + 1 },
   )
 }
 
@@ -353,7 +395,7 @@ async function editPin($: Engine, s: Scope, index: number, link: PinnedLink): Pr
 async function renamePin($: Engine, s: Scope, index: number): Promise<void> {
   const link = (await pinsOf($, s))[index]
   if (link === undefined) return
-  await update($, draft, () => ({ url: link.url, title: link.title, scope: s, edit: { scope: s, index } }))
+  await update($, draft, now => ({ url: link.url, title: link.title, scope: s, edit: { scope: s, index }, rev: now.rev + 1 }))
   await update($, section, () => 'add')
 }
 
@@ -433,114 +475,129 @@ function linkRow(
 ) {
   const { Box, Text, Button } = k
   const fill = isTarget ? 'userMessageBackground' : undefined
-  const indent = handle === null ? 3 : 5
   return (
     <Box
       key={key}
-      flexDirection="column"
+      flexDirection="row"
+      columnGap={1}
       {...k.card}
       {...(fill !== undefined ? { backgroundColor: fill } : k.base)}
       hover={{ backgroundColor: fill ?? k.hover }}
     >
-      <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1}>
-        <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={1} minWidth={0} overflow="hidden">
-          {handle}
-          {linkIcon(k, link.url)}
-          <Button
-            key={`${key}-open`}
-            label={truncate(labelOf(link), width, false)}
-            plain
-            {...(isDim ? { dimColor: true } : {})}
-            {...k.quiet}
-            onPress={() => void openUrl($, link.url)}
-          />
-        </Box>
-        <Box flexDirection="row" alignItems="center" flexShrink={0} columnGap={1}>
-          {actions}
-        </Box>
+      <Box flexDirection="column" alignItems="center" flexShrink={0} width={3}>
+        {linkIcon(k, link.url)}
+        {handle}
       </Box>
-      <Box key={`${key}-url`} position="relative" paddingLeft={indent} minWidth={0}>
-        <Text dimColor wrap="truncate-end">
-          {shortUrl(link.url)}
-        </Text>
-        <Box
-          position="absolute"
-          top={1}
-          left={indent}
-          display="none"
-          hover={{ display: 'flex' }}
-          paddingX={1}
-          borderStyle="round"
-          borderColor="inactive"
-          backgroundColor="userMessageBackground"
-        >
-          <Text>{link.url}</Text>
+      <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
+        <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1}>
+          <Box flexShrink={1} minWidth={0} overflow="hidden">
+            <Button
+              key={`${key}-open`}
+              label={truncate(labelOf(link), width, false)}
+              plain
+              {...(isDim ? { dimColor: true } : {})}
+              {...k.quiet}
+              onPress={() => void openUrl($, link.url)}
+            />
+          </Box>
+          <Box flexDirection="row" alignItems="center" flexShrink={0} columnGap={1}>
+            {actions}
+          </Box>
+        </Box>
+        <Box key={`${key}-url`} position="relative" minWidth={0}>
+          <Text dimColor wrap="truncate-end">
+            {shortUrl(link.url)}
+          </Text>
+          <Box
+            position="absolute"
+            top={1}
+            left={0}
+            display="none"
+            hover={{ display: 'flex' }}
+            paddingX={1}
+            borderStyle="round"
+            borderColor="inactive"
+            backgroundColor="userMessageBackground"
+          >
+            <Text>{link.url}</Text>
+          </Box>
         </Box>
       </Box>
     </Box>
   )
 }
 
+/** The text fields the mod draws: a field's key is where its posts go. */
+const FIELDS = ['search', 'draft-title', 'draft-url'] as const
+
 /**
- * The add / edit form: link, name, scope, save. Under the bar it ends in one
- * row; in the pane (`isNarrow`) the scope and the buttons take a row each.
+ * The add / edit form: name, link, Project / Session, Cancel, Save. Under the
+ * bar it is one row across the band; in the pane (`isNarrow`) the fields take
+ * a row each, the choice and the buttons the last. The fields are the mod's
+ * own (text-field.tsx), so they stretch; where a surface has no Client, Input.
  */
-function draftForm($: Engine, k: Kit, d: Draft, l: Lang, isNarrow = false) {
-  const { Box, Text, Button, Input } = k
-  const scopeRow = (
-    <Box flexDirection="row" alignItems="center" columnGap={1}>
-      <Text dimColor>{t(l, 'pinTo')}</Text>
+function draftForm($: Engine, k: Kit, d: Draft, l: Lang, active: string | null, isNarrow = false) {
+  const { Box, Button, Input, Client } = k
+  const field = (key: 'draft-title' | 'draft-url', grow: number) => {
+    const value = key === 'draft-title' ? d.title : d.url
+    const placeholder = t(l, key === 'draft-title' ? 'titlePlaceholder' : 'urlPlaceholder')
+    if (Client !== undefined) {
+      return (
+        <Client
+          key={key}
+          {...(isNarrow ? { width: '100%' } : { flexGrow: grow })}
+          module="./text-field.tsx"
+          props={{ value, placeholder, isActive: active === key, icon: '', rev: d.rev }}
+        />
+      )
+    }
+    return Input === undefined ? null : (
+      <Input
+        key={key}
+        placeholder={placeholder}
+        value={value}
+        onInput={text => void update($, draft, now => (key === 'draft-title' ? { ...now, title: text } : { ...now, url: text }))}
+        onSubmit={text => void submitDraft($, key === 'draft-title' ? { title: text } : { url: text })}
+      />
+    )
+  }
+  // One height for both: the chosen scope is the desktop's own button, the other dim.
+  const scopes = (
+    <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
       {(['project', 'session'] as const).map(s => (
         <Button
           key={`draft-${s}`}
           label={t(l, s)}
-          {...(d.scope === s ? { variant: 'primary' as const } : {})}
+          {...(d.scope === s ? {} : { dimColor: true })}
           onPress={() => void update($, draft, now => ({ ...now, scope: s }))}
         />
       ))}
     </Box>
   )
   const buttons = (
-    <Box flexDirection="row" alignItems="center" justifyContent="flex-end" columnGap={1}>
+    <Box flexDirection="row" alignItems="center" justifyContent="flex-end" columnGap={1} flexShrink={0}>
       <Button key="draft-cancel" label={t(l, 'cancel')} onPress={() => void closeDraft($)} />
-      <Button
-        key="draft-save"
-        label={t(l, d.edit !== null ? 'saveEdit' : 'save')}
-        variant="primary"
-        onPress={() => void submitDraft($, {})}
-      />
+      <Button key="draft-save" label={t(l, 'saveEdit')} variant="primary" onPress={() => void submitDraft($, {})} />
     </Box>
   )
-  return (
-    <Box flexDirection="column" alignItems="stretch" rowGap={1}>
-      {Input !== undefined && (
-        <Input
-          key="draft-url"
-          placeholder={t(l, 'urlPlaceholder')}
-          value={d.url}
-          autoFocus
-          onInput={value => void update($, draft, now => ({ ...now, url: value }))}
-          onSubmit={value => void submitDraft($, { url: value })}
-        />
-      )}
-      {Input !== undefined && (
-        <Input
-          key="draft-title"
-          placeholder={t(l, 'titlePlaceholder')}
-          value={d.title}
-          onInput={value => void update($, draft, now => ({ ...now, title: value }))}
-          onSubmit={value => void submitDraft($, { title: value })}
-        />
-      )}
-      {isNarrow ? (
-        scopeRow
-      ) : (
-        <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1}>
-          {scopeRow}
+  if (isNarrow) {
+    return (
+      <Box flexDirection="column" alignItems="stretch" rowGap={1}>
+        {field('draft-title', 1)}
+        {field('draft-url', 1)}
+        <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1} flexWrap="wrap">
+          {scopes}
           {buttons}
         </Box>
-      )}
-      {isNarrow && buttons}
+      </Box>
+    )
+  }
+  return (
+    <Box flexDirection="row" alignItems="center" columnGap={1}>
+      {field('draft-title', 1)}
+      {field('draft-url', 2)}
+      {scopes}
+      {buttons}
     </Box>
   )
 }
@@ -570,20 +627,21 @@ export const register: Register = on => {
   // The pane's close mark or Escape closes it too: «All» lights only while it is open.
   on('ui.message', async ($, e, next) => {
     if (e.module.endsWith('drag-handle.tsx')) await onDrag($, e.element, e.data)
-    if (e.module.endsWith('search-field.tsx') && typeof e.data === 'object' && e.data !== null) {
+    if (e.module.endsWith('text-field.tsx') && typeof e.data === 'object' && e.data !== null) {
       const { kind, value } = e.data as { kind?: string; value?: unknown }
-      if (kind === 'focus') await update($, searchActive, () => true)
-      if (kind === 'search' && typeof value === 'string') {
-        await update($, searchActive, () => true)
-        await update($, search, () => value)
-      }
+      const text = typeof value === 'string' ? value : null
+      if (kind === 'focus' || kind === 'change') await update($, activeField, () => e.element)
+      if (e.element === 'search' && text !== null) await update($, search, () => text)
+      if (e.element === 'draft-title' && text !== null) await update($, draft, now => ({ ...now, title: text }))
+      if (e.element === 'draft-url' && text !== null) await update($, draft, now => ({ ...now, url: text }))
+      if (kind === 'submit' && e.element !== 'search') await submitDraft($, {})
     }
     return next(e)
   })
 
-  // The ring moving to another element of the pane takes the keys from the field.
+  // The ring moving to another element takes the keys from the mod's fields.
   on('ui.focus', async ($, e, next) => {
-    if (e.requestId === PANE && e.element !== 'search') await update($, searchActive, () => false)
+    if (!FIELDS.some(f => f === e.element)) await update($, activeField, () => null)
     return next(e)
   })
 
@@ -599,7 +657,7 @@ export const register: Register = on => {
     const below = await next(e)
     if (e.props.hasSurvey) return below
 
-    const [rec, pLinks, sLinks, sc, sec, d, icons, l, isPaneOpen, dragged] = await Promise.all([
+    const [rec, pLinks, sLinks, sc, sec, d, icons, l, isPaneOpen, dragged, typing] = await Promise.all([
       read($, recent),
       read($, projectLinks),
       read($, sessionLinks),
@@ -610,6 +668,7 @@ export const register: Register = on => {
       read($, lang),
       read($, paneOpen),
       read($, drag),
+      read($, activeField),
     ])
     const k = kitOf($.ui.resolve(e), e.surface, icons)
     const { Box, Text, Button } = k
@@ -619,7 +678,7 @@ export const register: Register = on => {
     const links = sc === 'project' ? pLinks : sLinks
     const onBar = links.slice(0, BAR_LINKS)
     // Read back by a drop on the bar (a module variable: a drawing writes no state).
-    barWidths = onBar.map(link => chipWidth(truncate(labelOf(link), budget)))
+    barWidths = onBar.map(link => chipWidth(truncate(labelOf(link), budget)) + 2)
     const total = pLinks.length + sLinks.length
 
     const scopeSwitch = (
@@ -658,20 +717,9 @@ export const register: Register = on => {
               {...(isTarget ? { backgroundColor: 'userMessageBackground' } : k.base)}
               hover={{ backgroundColor: isTarget ? 'userMessageBackground' : k.hover }}
             >
+              {/* Drag the handle along the bar to move the link. */}
+              {handle}
               {linkIcon(k, link.url)}
-              {/* Under the pointer the favicon turns into a handle: drag it along the bar.
-                  It stays while its chip is being dragged, the pointer elsewhere. */}
-              {handle !== null && (
-                <Box
-                  position="absolute"
-                  top={0}
-                  left={0}
-                  {...(isMoving ? {} : { display: 'none' as const, hover: { display: 'flex' as const } })}
-                  backgroundColor="userMessageBackground"
-                >
-                  {handle}
-                </Box>
-              )}
               <Button key={`open-${i}`} label={shown} plain {...k.quiet} onPress={() => void openUrl($, link.url)} />
               {shown !== name && (
                 <Box
@@ -835,7 +883,7 @@ export const register: Register = on => {
       sec === 'add' ? (
         <Box flexDirection="column" rowGap={1}>
           {bar}
-          {draftForm($, k, d, l)}
+          {draftForm($, k, d, l, typing)}
         </Box>
       ) : (
         bar
@@ -851,7 +899,7 @@ export const register: Register = on => {
   // «All»: every pinned link of the project and the session, in a side pane:
   // search, sort by name or link, drag by the handle, rename, move, unpin.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const [pLinks, sLinks, d, icons, l, query, dragged, isTyping, pressed] = await Promise.all([
+    const [pLinks, sLinks, d, icons, l, query, dragged, typingIn, pressed] = await Promise.all([
       read($, projectLinks),
       read($, sessionLinks),
       read($, draft),
@@ -859,13 +907,15 @@ export const register: Register = on => {
       read($, lang),
       read($, search),
       read($, drag),
-      read($, searchActive),
+      read($, activeField),
       read($, sorts),
     ])
     const k = kitOf($.ui.resolve(e), e.surface, icons)
     const { Box, Text, Button, Input, Client } = k
+    // A field of the pane holds the keys only while the pane has the focus.
+    const isTyping = e.props.isFocused ? typingIn : null
     // The name has its line to itself, the URL and the buttons the next one.
-    const width = Math.max(16, e.props.bodyColumns - 16)
+    const width = Math.max(16, e.props.bodyColumns - 14)
     const isSearching = query.trim() !== ''
     const groups: [Scope, PinnedLink[], string][] = [
       ['project', pLinks, t(l, 'project')],
@@ -896,8 +946,8 @@ export const register: Register = on => {
         {Client !== undefined ? (
           <Client
             key="search"
-            module="./search-field.tsx"
-            props={{ value: query, placeholder: t(l, 'search'), isActive: isTyping && e.props.isFocused }}
+            module="./text-field.tsx"
+            props={{ value: query, placeholder: t(l, 'search'), isActive: isTyping === 'search', icon: '🔍', rev: 0 }}
             width="100%"
           />
         ) : (
@@ -958,7 +1008,7 @@ export const register: Register = on => {
                       borderStyle="round"
                       borderColor="inactive"
                     >
-                      {draftForm($, k, d, l, true)}
+                      {draftForm($, k, d, l, isTyping, true)}
                     </Box>
                   </Box>
                 ) : (

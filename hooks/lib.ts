@@ -265,3 +265,62 @@ export function dropIndexX(from: number, dx: number, widths: readonly number[]):
 export function chipWidth(shown: string): number {
   return [...shown].length + 5
 }
+
+/** What a page's head says about it: its title and the icons it declares, best first. */
+export type PageMeta = { title: string; icons: string[] }
+
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', mdash: '—', ndash: '–', laquo: '«', raquo: '»' }
+
+/** Decodes the HTML entities a title holds: named ones, `&#39;`, `&#x27;`. */
+export function decodeEntities(text: string): string {
+  return text.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (whole, code: string) => {
+    if (code[0] === '#') {
+      const n = code[1] === 'x' || code[1] === 'X' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10)
+      return Number.isFinite(n) ? String.fromCodePoint(n) : whole
+    }
+    return ENTITIES[code.toLowerCase()] ?? whole
+  })
+}
+
+function attr(tag: string, name: string): string | null {
+  const m = new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(tag)
+  return m === null ? null : (m[2] ?? m[3] ?? m[4] ?? '')
+}
+
+/**
+ * Reads a page's `<title>` and its `<link rel="icon">`s, resolved against
+ * `base` (the URL the page came from). Icons rank SVG first, then the small
+ * ones (≤ 64px), then the rest, then Apple's touch icon.
+ */
+export function parseHead(html: string, base: string): PageMeta {
+  const head = html.slice(0, 200_000)
+  const titleMatch = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(head)
+  const title = titleMatch === null ? '' : decodeEntities(titleMatch[1]!).replace(/\s+/g, ' ').trim()
+  const ranked: { href: string; rank: number }[] = []
+  for (const m of head.matchAll(/<link\b[^>]*>/gi)) {
+    const tag = m[0]
+    const rel = (attr(tag, 'rel') ?? '').toLowerCase()
+    const href = attr(tag, 'href')
+    if (href === null || href === '' || !/\bicon\b/.test(rel)) continue
+    let url: string
+    try {
+      url = new URL(decodeEntities(href), base).href
+    } catch {
+      continue
+    }
+    const type = (attr(tag, 'type') ?? '').toLowerCase()
+    const size = Number(/(\d+)x\d+/.exec(attr(tag, 'sizes') ?? '')?.[1] ?? 0)
+    const rank = rel.includes('apple')
+      ? 4
+      : type.includes('svg') || /\.svg(\?|$)/i.test(url)
+        ? 0
+        : size > 0 && size <= 64
+          ? 1
+          : size === 0
+            ? 2
+            : 3
+    ranked.push({ href: url, rank })
+  }
+  ranked.sort((a, b) => a.rank - b.rank)
+  return { title, icons: [...new Set(ranked.map(r => r.href))] }
+}
