@@ -198,3 +198,70 @@ export function faviconMime(contentType: string): string | null {
   if (type === 'image/vnd.microsoft.icon' || type === 'image/x-icon' || type === 'image/ico') return 'image/x-icon'
   return /^image\/(png|gif|jpeg|webp|svg\+xml)$/.test(type) ? type : null
 }
+
+export type SortBy = 'title' | 'url'
+export type SortDir = 'asc' | 'desc'
+
+/** What a sort compares: the name (or the short URL when none), or the short URL; any case. */
+function sortKey(link: PinnedLink, by: SortBy): string {
+  return (by === 'title' ? labelOf(link) : shortUrl(link.url)).toLowerCase()
+}
+
+/** The list sorted by name or link, A→Z or Z→A, numbers in their order; ties keep their place. */
+export function sortLinks(list: readonly PinnedLink[], by: SortBy, dir: SortDir): PinnedLink[] {
+  const sign = dir === 'asc' ? 1 : -1
+  return list
+    .map((link, i) => ({ link, i }))
+    .sort((a, b) => {
+      const order = sortKey(a.link, by).localeCompare(sortKey(b.link, by), undefined, { numeric: true })
+      return order !== 0 ? sign * order : a.i - b.i
+    })
+    .map(e => e.link)
+}
+
+/** How the list stands sorted by `by`, if it does: the arrow a header shows comes from the list itself. */
+export function sortedAs(list: readonly PinnedLink[], by: SortBy): SortDir | null {
+  if (list.length < 2) return null
+  const same = (other: PinnedLink[]) => other.every((l, i) => l === list[i])
+  if (same(sortLinks(list, by, 'asc'))) return 'asc'
+  if (same(sortLinks(list, by, 'desc'))) return 'desc'
+  return null
+}
+
+/** Whether a pinned link answers a search: its name or its short URL holds the text, any case. */
+export function matches(link: PinnedLink, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  return q === '' || labelOf(link).toLowerCase().includes(q) || shortUrl(link.url).toLowerCase().includes(q)
+}
+
+/** Rows an entry of the «All» pane takes: its name, then its URL and buttons. */
+export const ENTRY_ROWS = 2
+
+/** Where an entry dragged `dy` rows from `from` lands in a list of `count`. */
+export function dropIndexY(from: number, dy: number, count: number, rows = ENTRY_ROWS): number {
+  return Math.max(0, Math.min(count - 1, from + Math.round(dy / rows)))
+}
+
+/**
+ * Where a chip of the bar dragged `dx` cells lands: the chip whose middle is
+ * nearest the dragged chip's middle, the chips being `widths` cells wide.
+ */
+export function dropIndexX(from: number, dx: number, widths: readonly number[]): number {
+  let left = 0
+  const middles = widths.map(w => {
+    const middle = left + w / 2
+    left += w
+    return middle
+  })
+  const moved = (middles[from] ?? 0) + dx
+  let best = from
+  for (let i = 0; i < middles.length; i++) {
+    if (Math.abs(middles[i]! - moved) < Math.abs(middles[best]! - moved)) best = i
+  }
+  return best
+}
+
+/** A chip's width in cells: favicon, name, padding and the gap after it. */
+export function chipWidth(shown: string): number {
+  return [...shown].length + 5
+}

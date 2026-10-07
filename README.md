@@ -12,7 +12,8 @@ A mod for the **Code tab of Claude Desktop** that keeps the links you work with 
 - **Short and tidy**: each name takes at most a quarter of the links' room; a cut name shows in full, with its URL, when you hover it. A link with no name shows as its URL without `https://` and `www.`.
 - **+** opens two fields, the link and its name, and the choice of project or session.
 - **Recent**: hover it for a list, above the button, of the session's 10 latest links, with a **Project** and a **Session** column: 📌 pins a link there, ✓ shows it is pinned (and unpins it), ✎ renames a pinned one.
-- **All** opens a side pane (and stays lit while it is open) with every pinned link of the project and the session: reorder (the first 4 of each list are on the bar), rename (✎), move to the other list, unpin.
+- **All** opens a side pane (and stays lit while it is open) with every pinned link of the project and the session: search them, sort each list by name or by link (A→Z, again for Z→A), drag them by the ⠿ handle (the first 4 of each list are on the bar), rename (✎), move to the other list, unpin.
+- **Drag to reorder on the bar** too: hover a link and its favicon turns into a handle.
 - **Speaks your language**: English, Deutsch, Français, Italiano, Español, Українська, Русский, following Claude Desktop's language setting; English otherwise.
 
 It is built on Claude Code's **mods** (plugins of function hooks), so it does not patch the Claude app. It shares the band above the prompt: whatever the plugins beneath it draw there (say, [Claude Tabs](https://github.com/tripolskiydigital/claude-tabs)) stays, with the links row below it.

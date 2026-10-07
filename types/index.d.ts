@@ -18,6 +18,9 @@ export type Draft = {
   edit: { scope: Scope; index: number } | null
 }
 
+/** A link being dragged: on the bar or in the «All» pane, in which list, from where to where. */
+export type Drag = { where: 'bar' | 'pane'; scope: Scope; from: number; to: number }
+
 declare module 'claude-code' {
   interface PluginState {
     'links-bar': {
@@ -33,6 +36,9 @@ declare module 'claude-code' {
       lang: Lang
       /** Whether the «All» pane is open: the button is lit while it is. */
       paneOpen: boolean
+      /** The «All» pane's search text. */
+      search: string
+      drag: Drag | null
     }
   }
 }

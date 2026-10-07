@@ -129,3 +129,45 @@ test('a row another plugin drew in the band stays above the links', async ($, on
   expect(await ui.find({ key: 'open-0' })).toBeDefined()
   await ui.unmount()
 })
+
+test('pinned links reorder by dragging, on the bar and in the pane, and sort from the header', async ($, on) => {
+  const ran: string[] = []
+  stubs(on, ran, { 'project:/p/alpha': PINS.slice(0, 3) })
+  await $.session.start({ cwd: '/p/alpha', surface: 'desktop', isInteractive: true } as never)
+
+  const bar = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  // Drag the first chip far right: it lands last of the three.
+  await bar.pointer({ type: 'down', x: 0, y: 0, button: 'left', in: 'drag-bar-project-0' })
+  await bar.pointer({ type: 'move', x: 200, y: 0, button: 'left', in: 'drag-bar-project-0' })
+  await bar.pointer({ type: 'up', x: 200, y: 0, button: 'left', in: 'drag-bar-project-0' })
+  await bar.press({ key: 'open-2' })
+  await bar.unmount()
+
+  const pane = await $.ui.mount({
+    plugin: 'links-bar',
+    surface: 'desktop',
+    component: 'Pane',
+    requestId: 'links-bar',
+    props: { title: 'All links', isFocused: true, bodyColumns: 70 } as never,
+  })
+  // Two rows down in the pane: one entry down.
+  await pane.pointer({ type: 'down', x: 0, y: 0, button: 'left', in: 'drag-pane-project-0' })
+  await pane.pointer({ type: 'up', x: 0, y: 2, button: 'left', in: 'drag-pane-project-0' })
+  await pane.press({ key: 'all-project-0-open' })
+
+  // Sorting by link puts site0, site1, site2 back in order.
+  await pane.press({ key: 'sort-project-url' })
+  await pane.press({ key: 'all-project-0-open' })
+
+  // The search keeps the pinned links that match.
+  await pane.input({ key: 'search', text: 'site2', kind: 'change' })
+  expect(await pane.find({ key: 'all-project-2-open' })).toBeDefined()
+  expect(await pane.find({ key: 'all-project-0-open' })).toBeUndefined()
+  await pane.unmount()
+
+  expect(ran.filter(r => r.startsWith('open '))).toEqual([
+    'open https://site0.com/page',
+    'open https://site2.com/page',
+    'open https://site0.com/page',
+  ])
+})

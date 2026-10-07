@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, Register, RenderChildren, RenderElement } from 'claude-code'
 
-import type { Draft, Lang, PinnedLink, Scope } from '../types'
+import type { Drag, Draft, Lang, PinnedLink, Scope } from '../types'
 import { langOf, t } from './i18n'
 import {
   BAR_LINKS,
@@ -13,12 +13,19 @@ import {
   isPrivateHost,
   labelBudget,
   labelOf,
+  chipWidth,
+  dropIndexX,
+  dropIndexY,
+  matches,
   move,
   normalizeUrl,
   recentLinks,
   shortUrl,
+  sortLinks,
+  sortedAs,
   truncate,
 } from './lib'
+import type { SortBy } from './lib'
 
 type Engine = EngineInterface
 
@@ -34,6 +41,8 @@ const favicons = atom({ plugin: 'links-bar', key: 'favicons' } as const, {})
 const projectName = atom({ plugin: 'links-bar', key: 'projectName' } as const, '')
 const lang = atom({ plugin: 'links-bar', key: 'lang' } as const, 'en')
 const paneOpen = atom({ plugin: 'links-bar', key: 'paneOpen' } as const, false)
+const search = atom({ plugin: 'links-bar', key: 'search' } as const, '')
+const drag = atom({ plugin: 'links-bar', key: 'drag' } as const, null)
 
 /** Pins and the scope switch are read again this often: another session may have changed them. */
 const SYNC_MS = 5_000
@@ -259,8 +268,39 @@ async function unpin($: Engine, s: Scope, index: number): Promise<void> {
   await savePins($, s, (await pinsOf($, s)).filter((_, j) => j !== index))
 }
 
-async function reorder($: Engine, s: Scope, index: number, delta: number): Promise<void> {
-  await savePins($, s, move(await pinsOf($, s), index, delta))
+async function moveTo($: Engine, s: Scope, from: number, to: number): Promise<void> {
+  if (from === to) return
+  await savePins($, s, move(await pinsOf($, s), from, to - from))
+}
+
+/** A header's «Name» / «Link»: sorts the list A→Z, or Z→A when it already stands A→Z. */
+async function sortBy($: Engine, s: Scope, by: SortBy): Promise<void> {
+  const list = await pinsOf($, s)
+  await savePins($, s, sortLinks(list, by, sortedAs(list, by) === 'asc' ? 'desc' : 'asc'))
+}
+
+/** The bar's chip widths as last drawn: where a dragged chip lands is read off them. */
+let barWidths: number[] = []
+
+/** A drag handle reports: a press starts a drag, moves aim it, the release drops it. */
+async function onDrag($: Engine, element: string, data: unknown): Promise<void> {
+  const m = /^drag-(bar|pane)-(project|session)-(\d+)$/.exec(element)
+  if (m === null || typeof data !== 'object' || data === null) return
+  const where = m[1] as Drag['where']
+  const s = m[2] as Scope
+  const from = Number(m[3])
+  const { kind, dx = 0, dy = 0 } = data as { kind?: string; dx?: number; dy?: number }
+  const count = (s === 'project' ? await read($, projectLinks) : await read($, sessionLinks)).length
+  const to = where === 'bar' ? dropIndexX(from, dx, barWidths) : dropIndexY(from, dy, count)
+  if (kind === 'start' || kind === 'move') {
+    const next: Drag = { where, scope: s, from, to }
+    if (changed(await read($, drag), next)) await update($, drag, () => next)
+    return
+  }
+  if (kind === 'drop') {
+    await update($, drag, () => null)
+    await moveTo($, s, from, to)
+  }
 }
 
 async function closeDraft($: Engine): Promise<void> {
@@ -311,6 +351,7 @@ type Kit = {
   Button: Elements['desktop']['Button']
   Svg?: Elements['desktop']['Svg']
   Input?: Elements['desktop']['Input']
+  Client?: Elements['desktop']['Client']
   /** The desktop's rows start transparent, so a hover has a color to paint over. */
   base: { backgroundColor?: string }
   hover: string
@@ -327,6 +368,7 @@ function kitOf(els: ReturnType<EngineInterface['ui']['resolve']>, surface: strin
     Button: els.Button,
     ...('Svg' in els ? { Svg: els.Svg } : {}),
     ...('Input' in els ? { Input: els.Input } : {}),
+    ...('Client' in els ? { Client: els.Client } : {}),
     base: isTerminal ? {} : { backgroundColor: 'transparent' },
     hover: isTerminal ? 'userMessageBackground' : 'rgba(128, 128, 128, 0.14)',
     quiet: isTerminal ? {} : { hover: { backgroundColor: 'transparent' } },
@@ -341,6 +383,13 @@ function linkIcon(k: Kit, url: string) {
   return <Svg source={faviconSvg(k.icons[host], host)} alt={host} width={ICON_BOX} height={ICON_BOX} />
 }
 
+/** A drag handle: a Client that reports the pointer's moves; nothing where the surface has none. */
+function dragHandle(k: Kit, key: string, isDragging: boolean) {
+  if (k.Client === undefined) return null
+  const { Client } = k
+  return <Client key={key} module="./drag-handle.tsx" props={{ glyph: '⠿', isDragging }} width={2} height={1} />
+}
+
 /**
  * A link's entry in the pane, in two lines so a narrow pane cuts nothing off:
  * favicon and name (opens it); then its URL, dim, and the `actions` at the right.
@@ -353,11 +402,19 @@ function linkRow(
   width: number,
   actions: RenderChildren,
   isDim = false,
+  handle: RenderChildren = null,
+  isTarget = false,
 ) {
   const { Box, Text, Button } = k
   return (
-    <Box key={key} flexDirection="column" {...k.base} hover={{ backgroundColor: k.hover }}>
+    <Box
+      key={key}
+      flexDirection="column"
+      {...(isTarget ? { backgroundColor: 'userMessageBackground' } : k.base)}
+      hover={{ backgroundColor: isTarget ? 'userMessageBackground' : k.hover }}
+    >
       <Box flexDirection="row" alignItems="center" columnGap={1} overflow="hidden">
+        {handle}
         {linkIcon(k, link.url)}
         <Button
           key={`${key}-open`}
@@ -369,7 +426,7 @@ function linkRow(
         />
       </Box>
       <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={2}>
-        <Box flexShrink={1} minWidth={0} paddingLeft={3} overflow="hidden">
+        <Box flexShrink={1} minWidth={0} paddingLeft={handle === null ? 3 : 5} overflow="hidden">
           <Text dimColor wrap="truncate">
             {shortUrl(link.url)}
           </Text>
@@ -471,6 +528,11 @@ export const register: Register = on => {
   })
 
   // The pane's close mark or Escape closes it too: «All» lights only while it is open.
+  on('ui.message', async ($, e, next) => {
+    if (e.module.endsWith('drag-handle.tsx')) await onDrag($, e.element, e.data)
+    return next(e)
+  })
+
   on('ui.close', async ($, e, next) => {
     const result = await next(e)
     if (e.id === PANE) await update($, paneOpen, () => false)
@@ -483,7 +545,7 @@ export const register: Register = on => {
     const below = await next(e)
     if (e.props.hasSurvey) return below
 
-    const [rec, pLinks, sLinks, sc, sec, d, icons, l, isPaneOpen] = await Promise.all([
+    const [rec, pLinks, sLinks, sc, sec, d, icons, l, isPaneOpen, dragged] = await Promise.all([
       read($, recent),
       read($, projectLinks),
       read($, sessionLinks),
@@ -493,13 +555,17 @@ export const register: Register = on => {
       read($, favicons),
       read($, lang),
       read($, paneOpen),
+      read($, drag),
     ])
     const k = kitOf($.ui.resolve(e), e.surface, icons)
     const { Box, Text, Button } = k
     const budget = labelBudget(e.props.bodyColumns)
+    const barDrag = dragged?.where === 'bar' && dragged.scope === sc ? dragged : null
 
     const links = sc === 'project' ? pLinks : sLinks
     const onBar = links.slice(0, BAR_LINKS)
+    // Read back by a drop on the bar (a module variable: a drawing writes no state).
+    barWidths = onBar.map(link => chipWidth(truncate(labelOf(link), budget)))
     const total = pLinks.length + sLinks.length
 
     const scopeSwitch = (
@@ -525,6 +591,9 @@ export const register: Register = on => {
         onBar.map((link, i) => {
           const name = labelOf(link)
           const shown = truncate(name, budget)
+          const isMoving = barDrag?.from === i
+          const isTarget = barDrag !== null && barDrag.to === i && barDrag.from !== i
+          const handle = dragHandle(k, `drag-bar-${sc}-${i}`, isMoving)
           return (
             <Box
               key={`chip-${i}`}
@@ -532,10 +601,23 @@ export const register: Register = on => {
               flexDirection="row"
               alignItems="center"
               flexShrink={0}
-              {...k.base}
-              hover={{ backgroundColor: k.hover }}
+              {...(isTarget ? { backgroundColor: 'userMessageBackground' } : k.base)}
+              hover={{ backgroundColor: isTarget ? 'userMessageBackground' : k.hover }}
             >
               {linkIcon(k, link.url)}
+              {/* Under the pointer the favicon turns into a handle: drag it along the bar.
+                  It stays while its chip is being dragged, the pointer elsewhere. */}
+              {handle !== null && (
+                <Box
+                  position="absolute"
+                  top={0}
+                  left={0}
+                  {...(isMoving ? {} : { display: 'none' as const, hover: { display: 'flex' as const } })}
+                  backgroundColor="userMessageBackground"
+                >
+                  {handle}
+                </Box>
+              )}
               <Button key={`open-${i}`} label={shown} plain {...k.quiet} onPress={() => void openUrl($, link.url)} />
               {shown !== name && (
                 <Box
@@ -706,78 +788,119 @@ export const register: Register = on => {
     )
   })
 
-  // «All»: every pinned link of the project and the session, in a side pane.
+  // «All»: every pinned link of the project and the session, in a side pane:
+  // search, sort by name or link, drag by the handle, rename, move, unpin.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const [pLinks, sLinks, d, icons, pname, l] = await Promise.all([
+    const [pLinks, sLinks, d, icons, pname, l, query, dragged] = await Promise.all([
       read($, projectLinks),
       read($, sessionLinks),
       read($, draft),
       read($, favicons),
       read($, projectName),
       read($, lang),
+      read($, search),
+      read($, drag),
     ])
     const k = kitOf($.ui.resolve(e), e.surface, icons)
-    const { Box, Text, Button } = k
+    const { Box, Text, Button, Input } = k
     // The name has its line to itself, the URL and the buttons the next one.
-    const width = Math.max(16, e.props.bodyColumns - 6)
+    const width = Math.max(16, e.props.bodyColumns - 8)
+    const isSearching = query.trim() !== ''
     const groups: [Scope, PinnedLink[], string][] = [
       ['project', pLinks, t(l, 'projectSection', { name: pname })],
       ['session', sLinks, t(l, 'sessionSection')],
     ]
 
+    const sortButton = (s: Scope, list: PinnedLink[], by: SortBy) => {
+      const dir = sortedAs(list, by)
+      const label = t(l, by === 'title' ? 'byTitle' : 'byUrl')
+      return (
+        <Button
+          key={`sort-${s}-${by}`}
+          label={dir === null ? label : `${label} ${t(l, dir === 'asc' ? 'sortAsc' : 'sortDesc')}`}
+          plain
+          {...(dir === null ? { dimColor: true } : {})}
+          onPress={() => void sortBy($, s, by)}
+        />
+      )
+    }
+
     return (
       <Box flexDirection="column" rowGap={1}>
-        <Text dimColor>{t(l, 'barHint', { max: BAR_LINKS })}</Text>
-        {groups.map(([s, list, title]) => (
-          <Box key={`group-${s}`} flexDirection="column">
-            <Text bold>{`${title} · ${list.length}`}</Text>
-            {list.length === 0 && <Text dimColor>{t(l, 'none')}</Text>}
-            {list.map((link, i) => {
-              const isEdited = d.edit?.scope === s && d.edit.index === i
-              const row = linkRow(
-                $,
-                k,
-                `all-${s}-${i}`,
-                link,
-                width,
-                [
-                  <Button key={`all-up-${s}-${i}`} label="↑" plain onPress={() => void reorder($, s, i, -1)} />,
-                  <Button key={`all-down-${s}-${i}`} label="↓" plain onPress={() => void reorder($, s, i, 1)} />,
-                  <Button key={`all-edit-${s}-${i}`} label="✎" plain onPress={() => void editPin($, s, i, link)} />,
-                  <Button
-                    key={`all-move-${s}-${i}`}
-                    label={t(l, s === 'project' ? 'moveSession' : 'moveProject')}
-                    plain
-                    onPress={() =>
-                      void pin($, s === 'project' ? 'session' : 'project', link, { scope: s, index: i })
-                    }
-                  />,
-                  <Button key={`all-unpin-${s}-${i}`} label="✕" plain onPress={() => void unpin($, s, i)} />,
-                ],
-                i >= BAR_LINKS,
-              )
-              return isEdited ? (
-                <Box key={`all-edit-box-${s}-${i}`} flexDirection="column" rowGap={1}>
-                  {row}
-                  <Box
-                    flexDirection="column"
-                    alignItems="stretch"
-                    marginLeft={3}
-                    marginBottom={1}
-                    paddingX={1}
-                    paddingY={1}
-                    borderStyle="round"
-                    borderColor="inactive"
-                  >
-                    {draftForm($, k, d, l, true)}
+        {Input !== undefined && (
+          <Input
+            key="search"
+            placeholder={t(l, 'search')}
+            value={query}
+            onInput={value => void update($, search, () => value)}
+            onSubmit={value => void update($, search, () => value)}
+          />
+        )}
+        {groups.map(([s, list, title]) => {
+          const shown = list.map((link, i) => ({ link, i })).filter(({ link }) => matches(link, query))
+          const paneDrag = dragged?.where === 'pane' && dragged.scope === s ? dragged : null
+          // Dragging needs the whole list in its place: not while searching or editing.
+          const canDrag = !isSearching && d.edit === null && list.length > 1
+          return (
+            <Box key={`group-${s}`} flexDirection="column">
+              <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1} flexWrap="wrap">
+                <Text bold>{`${title} · ${list.length}`}</Text>
+                {list.length > 1 && (
+                  <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
+                    {sortButton(s, list, 'title')}
+                    {sortButton(s, list, 'url')}
                   </Box>
-                </Box>
-              ) : (
-                row
-              )
-            })}
-          </Box>
-        ))}
+                )}
+              </Box>
+              {list.length === 0 && <Text dimColor>{t(l, 'none')}</Text>}
+              {list.length > 0 && shown.length === 0 && <Text dimColor>{t(l, 'noMatches')}</Text>}
+              {shown.map(({ link, i }) => {
+                const isEdited = d.edit?.scope === s && d.edit.index === i
+                const row = linkRow(
+                  $,
+                  k,
+                  `all-${s}-${i}`,
+                  link,
+                  width,
+                  [
+                    <Button key={`all-edit-${s}-${i}`} label="✎" plain onPress={() => void editPin($, s, i, link)} />,
+                    <Button
+                      key={`all-move-${s}-${i}`}
+                      label={t(l, s === 'project' ? 'moveSession' : 'moveProject')}
+                      plain
+                      onPress={() =>
+                        void pin($, s === 'project' ? 'session' : 'project', link, { scope: s, index: i })
+                      }
+                    />,
+                    <Button key={`all-unpin-${s}-${i}`} label="✕" plain onPress={() => void unpin($, s, i)} />,
+                  ],
+                  i >= BAR_LINKS,
+                  canDrag ? dragHandle(k, `drag-pane-${s}-${i}`, paneDrag?.from === i) : null,
+                  paneDrag !== null && paneDrag.to === i && paneDrag.from !== i,
+                )
+                return isEdited ? (
+                  <Box key={`all-edit-box-${s}-${i}`} flexDirection="column" rowGap={1}>
+                    {row}
+                    <Box
+                      flexDirection="column"
+                      alignItems="stretch"
+                      marginLeft={3}
+                      marginBottom={1}
+                      paddingX={1}
+                      paddingY={1}
+                      borderStyle="round"
+                      borderColor="inactive"
+                    >
+                      {draftForm($, k, d, l, true)}
+                    </Box>
+                  </Box>
+                ) : (
+                  row
+                )
+              })}
+            </Box>
+          )
+        })}
       </Box>
     )
   })
