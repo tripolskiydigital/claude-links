@@ -172,8 +172,8 @@ function escapeXml(text: string): string {
 export const ICON_SIZE = 16
 export const ICON_BOX = 20
 
-/** A desktop button's height in CSS pixels: a bar chip's icon is centred in it. */
-export const BUTTON_HEIGHT = 28
+/** A plain desktop button's height in CSS pixels (measured: 20): a bar chip's icon is centred in it. */
+export const BUTTON_HEIGHT = 20
 
 /**
  * A link's icon: its favicon, or its host's first letter on a square of the
