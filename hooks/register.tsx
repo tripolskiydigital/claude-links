@@ -279,6 +279,9 @@ async function sortBy($: Engine, s: Scope, by: SortBy): Promise<void> {
   await savePins($, s, sortLinks(list, by, sortedAs(list, by) === 'asc' ? 'desc' : 'asc'))
 }
 
+/** Rows an entry of the «All» pane takes with the gap after it: name, URL, gap. */
+const PANE_ENTRY_ROWS = 3
+
 /** The bar's chip widths as last drawn: where a dragged chip lands is read off them. */
 let barWidths: number[] = []
 
@@ -291,7 +294,7 @@ async function onDrag($: Engine, element: string, data: unknown): Promise<void> 
   const from = Number(m[3])
   const { kind, dx = 0, dy = 0 } = data as { kind?: string; dx?: number; dy?: number }
   const count = (s === 'project' ? await read($, projectLinks) : await read($, sessionLinks)).length
-  const to = where === 'bar' ? dropIndexX(from, dx, barWidths) : dropIndexY(from, dy, count)
+  const to = where === 'bar' ? dropIndexX(from, dx, barWidths) : dropIndexY(from, dy, count, PANE_ENTRY_ROWS)
   if (kind === 'start' || kind === 'move') {
     const next: Drag = { where, scope: s, from, to }
     if (changed(await read($, drag), next)) await update($, drag, () => next)
@@ -357,6 +360,8 @@ type Kit = {
   hover: string
   /** A Button inside a hovered row: the row's fill is enough. */
   quiet: { hover?: { backgroundColor: string } }
+  /** A pane entry's frame: on the desktop a rounded, unseen border, so its fill is rounded too. */
+  card: { borderStyle?: string; borderColor?: string; paddingX?: number }
   icons: Record<string, string | null>
 }
 
@@ -372,6 +377,7 @@ function kitOf(els: ReturnType<EngineInterface['ui']['resolve']>, surface: strin
     base: isTerminal ? {} : { backgroundColor: 'transparent' },
     hover: isTerminal ? 'userMessageBackground' : 'rgba(128, 128, 128, 0.14)',
     quiet: isTerminal ? {} : { hover: { backgroundColor: 'transparent' } },
+    card: isTerminal ? {} : { borderStyle: 'round', borderColor: 'transparent', paddingX: 1 },
     icons,
   }
 }
@@ -391,8 +397,10 @@ function dragHandle(k: Kit, key: string, isDragging: boolean) {
 }
 
 /**
- * A link's entry in the pane, in two lines so a narrow pane cuts nothing off:
- * favicon and name (opens it); then its URL, dim, and the `actions` at the right.
+ * A link's entry in the pane: favicon, name (opens it), ✎ and ✕ on the first
+ * line; the URL across the whole second line, cut at its end, shown whole in a
+ * card under the pointer. On the desktop the entry is a rounded card that
+ * lights under the pointer.
  */
 function linkRow(
   $: Engine,
@@ -406,33 +414,49 @@ function linkRow(
   isTarget = false,
 ) {
   const { Box, Text, Button } = k
+  const fill = isTarget ? 'userMessageBackground' : undefined
+  const indent = handle === null ? 3 : 5
   return (
     <Box
       key={key}
       flexDirection="column"
-      {...(isTarget ? { backgroundColor: 'userMessageBackground' } : k.base)}
-      hover={{ backgroundColor: isTarget ? 'userMessageBackground' : k.hover }}
+      {...k.card}
+      {...(fill !== undefined ? { backgroundColor: fill } : k.base)}
+      hover={{ backgroundColor: fill ?? k.hover }}
     >
-      <Box flexDirection="row" alignItems="center" columnGap={1} overflow="hidden">
-        {handle}
-        {linkIcon(k, link.url)}
-        <Button
-          key={`${key}-open`}
-          label={truncate(labelOf(link), width, false)}
-          plain
-          {...(isDim ? { dimColor: true } : {})}
-          {...k.quiet}
-          onPress={() => void openUrl($, link.url)}
-        />
-      </Box>
-      <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={2}>
-        <Box flexShrink={1} minWidth={0} paddingLeft={handle === null ? 3 : 5} overflow="hidden">
-          <Text dimColor wrap="truncate">
-            {shortUrl(link.url)}
-          </Text>
+      <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1}>
+        <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={1} minWidth={0} overflow="hidden">
+          {handle}
+          {linkIcon(k, link.url)}
+          <Button
+            key={`${key}-open`}
+            label={truncate(labelOf(link), width, false)}
+            plain
+            {...(isDim ? { dimColor: true } : {})}
+            {...k.quiet}
+            onPress={() => void openUrl($, link.url)}
+          />
         </Box>
         <Box flexDirection="row" alignItems="center" flexShrink={0} columnGap={1}>
           {actions}
+        </Box>
+      </Box>
+      <Box key={`${key}-url`} position="relative" paddingLeft={indent} minWidth={0}>
+        <Text dimColor wrap="truncate-end">
+          {shortUrl(link.url)}
+        </Text>
+        <Box
+          position="absolute"
+          top={1}
+          left={indent}
+          display="none"
+          hover={{ display: 'flex' }}
+          paddingX={1}
+          borderStyle="round"
+          borderColor="inactive"
+          backgroundColor="userMessageBackground"
+        >
+          <Text>{link.url}</Text>
         </Box>
       </Box>
     </Box>
@@ -652,7 +676,13 @@ export const register: Register = on => {
     // Every row is as wide as the header: the name has a column of its own, so the
     // marks stand under their titles whatever the name's length.
     const columnWidth = Math.max([...t(l, 'project')].length, [...t(l, 'session')].length) + 3
-    const nameWidth = recentWidth + 4
+    // The window's width is set, not left to its rows, and it fits the band: its
+    // right edge at the button's, it opens leftward over the bar.
+    const columnsWidth = 2 * columnWidth + 3
+    const popupChrome = 2 + 2 + 2
+    const nameWidth = Math.max(12, Math.min(recentWidth + 4, e.props.bodyColumns - 4 - columnsWidth - popupChrome))
+    const popupWidth = nameWidth + columnsWidth + popupChrome
+    const recentButtonWidth = [...t(l, 'recent')].length + 4
     const columns = (cells: [RenderChildren, RenderChildren, RenderChildren]) => (
       <Box flexDirection="row" alignItems="center" flexShrink={0}>
         <Box width={columnWidth} justifyContent="center">
@@ -670,11 +700,11 @@ export const register: Register = on => {
       <Box
         position="absolute"
         bottom={2}
-        right={0}
+        left={recentButtonWidth - popupWidth}
+        width={popupWidth}
         display="none"
         hover={{ display: 'flex' }}
         flexDirection="column"
-        minWidth={32}
         paddingX={1}
         borderStyle="round"
         borderColor="inactive"
@@ -718,7 +748,7 @@ export const register: Register = on => {
                 {linkIcon(k, link.url)}
                 <Button
                   key={`recent-${i}-open`}
-                  label={truncate(labelOf(link), recentWidth, false)}
+                  label={truncate(labelOf(link), nameWidth - 4, false)}
                   plain
                   onPress={() => void openUrl($, link.url)}
                 />
@@ -804,7 +834,7 @@ export const register: Register = on => {
     const k = kitOf($.ui.resolve(e), e.surface, icons)
     const { Box, Text, Button, Input } = k
     // The name has its line to itself, the URL and the buttons the next one.
-    const width = Math.max(16, e.props.bodyColumns - 8)
+    const width = Math.max(16, e.props.bodyColumns - 16)
     const isSearching = query.trim() !== ''
     const groups: [Scope, PinnedLink[], string][] = [
       ['project', pLinks, t(l, 'projectSection', { name: pname })],
@@ -842,7 +872,7 @@ export const register: Register = on => {
           // Dragging needs the whole list in its place: not while searching or editing.
           const canDrag = !isSearching && d.edit === null && list.length > 1
           return (
-            <Box key={`group-${s}`} flexDirection="column">
+            <Box key={`group-${s}`} flexDirection="column" rowGap={1}>
               <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1} flexWrap="wrap">
                 <Text bold>{`${title} · ${list.length}`}</Text>
                 {list.length > 1 && (
@@ -864,14 +894,6 @@ export const register: Register = on => {
                   width,
                   [
                     <Button key={`all-edit-${s}-${i}`} label="✎" plain onPress={() => void editPin($, s, i, link)} />,
-                    <Button
-                      key={`all-move-${s}-${i}`}
-                      label={t(l, s === 'project' ? 'moveSession' : 'moveProject')}
-                      plain
-                      onPress={() =>
-                        void pin($, s === 'project' ? 'session' : 'project', link, { scope: s, index: i })
-                      }
-                    />,
                     <Button key={`all-unpin-${s}-${i}`} label="✕" plain onPress={() => void unpin($, s, i)} />,
                   ],
                   i >= BAR_LINKS,

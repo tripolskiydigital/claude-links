@@ -107,9 +107,9 @@ test('a recent link pins to the session, a typed one to the project', async ($, 
   await pane.press({ key: 'draft-save' })
   expect(await pane.find({ key: 'draft-url' })).toBeUndefined()
 
-  await pane.press({ key: 'all-move-session-0' })
+  // ✕ unpins.
+  await pane.press({ key: 'all-unpin-session-0' })
   expect(await pane.find({ key: 'all-session-0-open' })).toBeUndefined()
-  expect(await pane.find({ key: 'all-project-1-open' })).toBeDefined()
   await pane.unmount()
 
   expect(ran.filter(r => r.startsWith('open '))).toEqual([
@@ -150,9 +150,9 @@ test('pinned links reorder by dragging, on the bar and in the pane, and sort fro
     requestId: 'links-bar',
     props: { title: 'All links', isFocused: true, bodyColumns: 70 } as never,
   })
-  // Two rows down in the pane: one entry down.
+  // Three rows down in the pane (name, URL, gap): one entry down.
   await pane.pointer({ type: 'down', x: 0, y: 0, button: 'left', in: 'drag-pane-project-0' })
-  await pane.pointer({ type: 'up', x: 0, y: 2, button: 'left', in: 'drag-pane-project-0' })
+  await pane.pointer({ type: 'up', x: 0, y: 3, button: 'left', in: 'drag-pane-project-0' })
   await pane.press({ key: 'all-project-0-open' })
 
   // Sorting by link puts site0, site1, site2 back in order.

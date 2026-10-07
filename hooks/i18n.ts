@@ -32,8 +32,6 @@ type Strings = {
   sortDesc: string
   emptyProject: string
   emptySession: string
-  moveProject: string
-  moveSession: string
   openFailed: string
 }
 
@@ -70,8 +68,6 @@ const STRINGS: Record<Lang, Strings> = {
     sortDesc: 'Z→A',
     emptyProject: 'No project links pinned',
     emptySession: 'No session links pinned',
-    moveProject: '→ Project',
-    moveSession: '→ Session',
     openFailed: 'Could not open the link: {error}',
   },
   ru: {
@@ -106,8 +102,6 @@ const STRINGS: Record<Lang, Strings> = {
     sortDesc: 'Я→А',
     emptyProject: 'Нет ссылок проекта',
     emptySession: 'Нет ссылок сессии',
-    moveProject: '→ Проект',
-    moveSession: '→ Сессия',
     openFailed: 'Не удалось открыть ссылку: {error}',
   },
   uk: {
@@ -142,8 +136,6 @@ const STRINGS: Record<Lang, Strings> = {
     sortDesc: 'Я→А',
     emptyProject: 'Немає посилань проєкту',
     emptySession: 'Немає посилань сесії',
-    moveProject: '→ Проєкт',
-    moveSession: '→ Сесія',
     openFailed: 'Не вдалося відкрити посилання: {error}',
   },
   de: {
@@ -178,8 +170,6 @@ const STRINGS: Record<Lang, Strings> = {
     sortDesc: 'Z→A',
     emptyProject: 'Keine Projekt-Links angeheftet',
     emptySession: 'Keine Sitzungs-Links angeheftet',
-    moveProject: '→ Projekt',
-    moveSession: '→ Sitzung',
     openFailed: 'Link ließ sich nicht öffnen: {error}',
   },
   fr: {
@@ -214,8 +204,6 @@ const STRINGS: Record<Lang, Strings> = {
     sortDesc: 'Z→A',
     emptyProject: 'Aucun lien de projet épinglé',
     emptySession: 'Aucun lien de session épinglé',
-    moveProject: '→ Projet',
-    moveSession: '→ Session',
     openFailed: 'Impossible d’ouvrir le lien : {error}',
   },
   it: {
@@ -250,8 +238,6 @@ const STRINGS: Record<Lang, Strings> = {
     sortDesc: 'Z→A',
     emptyProject: 'Nessun link di progetto fissato',
     emptySession: 'Nessun link di sessione fissato',
-    moveProject: '→ Progetto',
-    moveSession: '→ Sessione',
     openFailed: 'Impossibile aprire il link: {error}',
   },
   es: {
@@ -286,8 +272,6 @@ const STRINGS: Record<Lang, Strings> = {
     sortDesc: 'Z→A',
     emptyProject: 'No hay enlaces de proyecto fijados',
     emptySession: 'No hay enlaces de sesión fijados',
-    moveProject: '→ Proyecto',
-    moveSession: '→ Sesión',
     openFailed: 'No se pudo abrir el enlace: {error}',
   },
 }
