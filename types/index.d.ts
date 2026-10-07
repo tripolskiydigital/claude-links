@@ -18,6 +18,9 @@ export type Draft = {
   edit: { scope: Scope; index: number } | null
 }
 
+/** The sort last pressed on a list: by name or link, A→Z or Z→A. */
+export type LinkSort = { by: 'title' | 'url'; dir: 'asc' | 'desc' }
+
 /** A link being dragged: on the bar or in the «All» pane, in which list, from where to where. */
 export type Drag = { where: 'bar' | 'pane'; scope: Scope; from: number; to: number }
 
@@ -40,6 +43,8 @@ declare module 'claude-code' {
       /** Whether the search field holds the keys (its border is white then). */
       searchActive: boolean
       drag: Drag | null
+      /** The sort pressed on each list; lit while the list still stands in that order. */
+      sorts: { project: LinkSort | null; session: LinkSort | null }
     }
   }
 }

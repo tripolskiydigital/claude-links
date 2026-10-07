@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, Register, RenderChildren, RenderElement } from 'claude-code'
 
-import type { Drag, Draft, Lang, PinnedLink, Scope } from '../types'
+import type { Drag, Draft, Lang, LinkSort, PinnedLink, Scope } from '../types'
 import { langOf, t } from './i18n'
 import {
   BAR_LINKS,
@@ -43,6 +43,7 @@ const paneOpen = atom({ plugin: 'links-bar', key: 'paneOpen' } as const, false)
 const search = atom({ plugin: 'links-bar', key: 'search' } as const, '')
 const searchActive = atom({ plugin: 'links-bar', key: 'searchActive' } as const, false)
 const drag = atom({ plugin: 'links-bar', key: 'drag' } as const, null)
+const sorts = atom({ plugin: 'links-bar', key: 'sorts' } as const, { project: null, session: null })
 
 /** Pins and the scope switch are read again this often: another session may have changed them. */
 const SYNC_MS = 5_000
@@ -79,8 +80,19 @@ async function savePins($: Engine, s: Scope, list: PinnedLink[]): Promise<void> 
   await setPins($, s, list)
 }
 
+function asSort(value: unknown): LinkSort | null {
+  if (typeof value !== 'object' || value === null) return null
+  const { by, dir } = value as Record<string, unknown>
+  return (by === 'title' || by === 'url') && (dir === 'asc' || dir === 'desc') ? { by, dir } : null
+}
+
 async function loadPins($: Engine): Promise<void> {
   for (const s of ['project', 'session'] as const) await setPins($, s, await pinsOf($, s))
+  const stored = {
+    project: asSort(await $.store.get(`sort:${await storeKey($, 'project')}`)),
+    session: asSort(await $.store.get(`sort:${await storeKey($, 'session')}`)),
+  }
+  if (changed(await read($, sorts), stored)) await update($, sorts, () => stored)
 }
 
 async function refreshRecent($: Engine): Promise<void> {
@@ -276,7 +288,13 @@ async function moveTo($: Engine, s: Scope, from: number, to: number): Promise<vo
 /** A header's «Name» / «Link»: sorts the list A→Z, or Z→A when it already stands A→Z. */
 async function sortBy($: Engine, s: Scope, by: SortBy): Promise<void> {
   const list = await pinsOf($, s)
-  await savePins($, s, sortLinks(list, by, sortedAs(list, by) === 'asc' ? 'desc' : 'asc'))
+  // The pressed sort pressed again reverses; any other press starts A→Z.
+  const now = (await read($, sorts))[s]
+  const isLit = now !== null && now.by === by && sortedAs(list, by) === now.dir
+  const next: LinkSort = { by, dir: isLit && now.dir === 'asc' ? 'desc' : 'asc' }
+  await savePins($, s, sortLinks(list, by, next.dir))
+  await $.store.set(`sort:${await storeKey($, s)}`, next)
+  await update($, sorts, all => ({ ...all, [s]: next }))
 }
 
 /** Rows an entry of the «All» pane takes with the gap after it: name, URL, gap. */
@@ -833,7 +851,7 @@ export const register: Register = on => {
   // «All»: every pinned link of the project and the session, in a side pane:
   // search, sort by name or link, drag by the handle, rename, move, unpin.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const [pLinks, sLinks, d, icons, l, query, dragged, isTyping] = await Promise.all([
+    const [pLinks, sLinks, d, icons, l, query, dragged, isTyping, pressed] = await Promise.all([
       read($, projectLinks),
       read($, sessionLinks),
       read($, draft),
@@ -842,6 +860,7 @@ export const register: Register = on => {
       read($, search),
       read($, drag),
       read($, searchActive),
+      read($, sorts),
     ])
     const k = kitOf($.ui.resolve(e), e.surface, icons)
     const { Box, Text, Button, Input, Client } = k
@@ -854,7 +873,10 @@ export const register: Register = on => {
     ]
 
     const sortButton = (s: Scope, list: PinnedLink[], by: SortBy) => {
-      const dir = sortedAs(list, by)
+      // Only the pressed sort lights, and only while the list stands in its order
+      // (a drag undoes it); two lists may stand sorted both ways at once.
+      const sort = pressed[s]
+      const dir = sort !== null && sort.by === by && sortedAs(list, by) === sort.dir ? sort.dir : null
       const label = t(l, by === 'title' ? 'byTitle' : 'byUrl')
       // Lit as «All» is while its pane is open: the active sort is the primary
       // button, its arrow the direction (↑ A→Z, ↓ Z→A); the other is plain and dim.

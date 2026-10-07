@@ -172,3 +172,25 @@ test('pinned links reorder by dragging, on the bar and in the pane, and sort fro
     'open https://site0.com/page',
   ])
 })
+
+test('only the pressed sort is lit, though the list stands sorted both ways', async ($, on) => {
+  const ran: string[] = []
+  // Sorted by name and by link alike.
+  stubs(on, ran, { 'project:/p/alpha': [{ url: 'https://a.io', title: 'A' }, { url: 'https://b.io', title: 'B' }] })
+  await $.session.start({ cwd: '/p/alpha', surface: 'desktop', isInteractive: true } as never)
+  const pane = await $.ui.mount({
+    plugin: 'links-bar',
+    surface: 'desktop',
+    component: 'Pane',
+    requestId: 'links-bar',
+    props: { title: 'All links', isFocused: true, bodyColumns: 70 } as never,
+  })
+  const variant = async (key: string) => ((await pane.find({ key })) as { props?: { variant?: string } } | undefined)?.props?.variant
+  expect(await variant('sort-project-title')).toBeUndefined()
+  expect(await variant('sort-project-url')).toBeUndefined()
+
+  await pane.press({ key: 'sort-project-url' })
+  expect(await variant('sort-project-url')).toBe('primary')
+  expect(await variant('sort-project-title')).toBeUndefined()
+  await pane.unmount()
+})
