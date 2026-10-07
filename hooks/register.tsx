@@ -543,13 +543,17 @@ function draftForm($: Engine, k: Kit, d: Draft, l: Lang, active: string | null, 
     const value = key === 'draft-title' ? d.title : d.url
     const placeholder = t(l, key === 'draft-title' ? 'titlePlaceholder' : 'urlPlaceholder')
     if (Client !== undefined) {
+      // The field fills a Box that grows: the buttons keep their width (it
+      // differs by language) and the fields share what is left, half each.
       return (
-        <Client
-          key={key}
-          width={isNarrow ? '100%' : `${grow}%`}
-          module="./text-field.tsx"
-          props={{ value, placeholder, isActive: active === key, icon: '', rev: d.rev }}
-        />
+        <Box key={`${key}-box`} flexGrow={grow} flexShrink={1} width={0} minWidth={0}>
+          <Client
+            key={key}
+            width="100%"
+            module="./text-field.tsx"
+            props={{ value, placeholder, isActive: active === key, icon: '', rev: d.rev }}
+          />
+        </Box>
       )
     }
     return Input === undefined ? null : (
@@ -562,14 +566,15 @@ function draftForm($: Engine, k: Kit, d: Draft, l: Lang, active: string | null, 
       />
     )
   }
-  // One height for both: the chosen scope is the desktop's own button, the other dim.
+  // One height for both: the chosen scope is lit (primary, as «All» is), the
+  // other dim; a new link starts on the bar's scope, «Project» by default.
   const scopes = (
     <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
       {(['project', 'session'] as const).map(s => (
         <Button
           key={`draft-${s}`}
           label={t(l, s)}
-          {...(d.scope === s ? {} : { dimColor: true })}
+          {...(d.scope === s ? { variant: 'primary' as const } : { dimColor: true })}
           onPress={() => void update($, draft, now => ({ ...now, scope: s }))}
         />
       ))}
@@ -595,8 +600,8 @@ function draftForm($: Engine, k: Kit, d: Draft, l: Lang, active: string | null, 
   }
   return (
     <Box flexDirection="row" alignItems="center" columnGap={1}>
-      {field('draft-title', 28)}
-      {field('draft-url', 38)}
+      {field('draft-title', 1)}
+      {field('draft-url', 1)}
       {scopes}
       {buttons}
     </Box>
