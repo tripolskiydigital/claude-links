@@ -191,8 +191,11 @@ async function fetchImage($: Engine, source: string, tmp: string): Promise<strin
  * favicon service. curl writes each picture to the temp folder.
  */
 async function fetchFavicon($: Engine, url: string, host: string): Promise<string | null> {
-  const page = await fetchPage($, url)
-  const sources = [...(page?.icons ?? []), `${new URL(url).origin}/favicon.ico`]
+  const origin = new URL(url).origin
+  let page = await fetchPage($, url)
+  // A page that does not answer, or names no icon (a 404), leaves the site's own.
+  if ((page?.icons.length ?? 0) === 0 && `${origin}/` !== url) page = await fetchPage($, `${origin}/`)
+  const sources = [...(page?.icons ?? []), `${origin}/favicon.ico`]
   if (!isPrivateHost(host)) {
     sources.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`)
   }
@@ -529,6 +532,20 @@ function linkRow(
   )
 }
 
+/**
+ * The clipboard's text, read with macOS's pbpaste when the person presses ⌘V
+ * in one of the mod's fields (the API writes a clipboard but reads none);
+ * newlines become spaces, as the fields hold one line.
+ */
+async function readClipboard($: Engine): Promise<string> {
+  try {
+    const got = await $.process.run(['pbpaste'], { timeoutMs: 3_000 })
+    return got.exitCode === 0 ? got.stdout.replace(/[\r\n\t]+/g, ' ').trim() : ''
+  } catch {
+    return ''
+  }
+}
+
 /** Room before a bar chip's name for the favicon laid over its button: figure spaces keep their width. */
 const ICON_ROOM = '\u2007\u2007\u2007'
 
@@ -614,6 +631,9 @@ function draftForm($: Engine, k: Kit, d: Draft, l: Lang, active: string | null, 
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    // Favicons are read again from the store at each load: a host the session
+    // marked as having none (by an older load) is looked up afresh.
+    await update($, favicons, () => ({}))
     // A form left open by the last load starts closed: the band always draws.
     await update($, section, () => null)
     await update($, draft, now => ({ ...EMPTY_DRAFT, rev: now.rev + 1 }))
@@ -641,9 +661,15 @@ export const register: Register = on => {
   on('ui.message', async ($, e, next) => {
     if (e.module.endsWith('drag-handle.tsx')) await onDrag($, e.element, e.data)
     if (e.module.endsWith('text-field.tsx') && typeof e.data === 'object' && e.data !== null) {
-      const { kind, value } = e.data as { kind?: string; value?: unknown }
-      const text = typeof value === 'string' ? value : null
-      if (kind === 'focus' || kind === 'change') await update($, activeField, () => e.element)
+      const { kind, value, isSelected } = e.data as { kind?: string; value?: unknown; isSelected?: unknown }
+      let text = typeof value === 'string' ? value : null
+      if (kind === 'copy' && text !== null && text !== '') await $.ui.copy({ text, surface: e.surface })
+      if (kind === 'paste' && text !== null) {
+        // ⌘V in a field of the mod's: the clipboard, one line, over the selection or at the end.
+        const clip = await readClipboard($)
+        text = clip === '' ? text : `${isSelected === true ? '' : text}${clip}`
+      }
+      if (kind === 'focus' || kind === 'change' || kind === 'paste') await update($, activeField, () => e.element)
       if (e.element === 'search' && text !== null) await update($, search, () => text)
       if (e.element === 'draft-title' && text !== null) await update($, draft, now => ({ ...now, title: text }))
       if (e.element === 'draft-url' && text !== null) await update($, draft, now => ({ ...now, url: text }))

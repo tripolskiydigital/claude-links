@@ -38,7 +38,7 @@ Then start a new session (or run `/reload-plugins`).
 
 - **Reads** the current session's transcript (`$.session.messages`) to find its links: what you and Claude wrote, and the links tools were called with (WebFetch, a browser's navigate). Tool output is not scanned. It also reads the `locale` field of `~/Library/Application Support/Claude/config.json` through `grep`, so nothing else of that file reaches the mod.
 - **Writes** only to its own plugin store: pinned links (`project:<folder>`, `session:<id>`), the chosen switch position, and a favicon cache (`favicon:<host>`, data URIs of at most 24 KB). Favicons are downloaded to the temp folder first.
-- **Runs** `open <url>` to open a link in your default browser, and `curl` to fetch a pinned or recent link's page (its title and the icons it declares are read from its `<head>`), those icons, then `<site>/favicon.ico`. When a public site has none, it asks Google's favicon service (`https://www.google.com/s2/favicons?domain=<host>`), which sends that host name to Google. Local and private hosts (localhost, `.local`, `.test`, private IP ranges) are never sent there.
+- **Runs** `pbpaste` only when you press ⌘V in one of the mod's fields (to paste; ⌘C/⌘X write the clipboard through the app), `open <url>` to open a link in your default browser, and `curl` to fetch a pinned or recent link's page (its title and the icons it declares are read from its `<head>`), those icons, then `<site>/favicon.ico`. When a public site has none, it asks Google's favicon service (`https://www.google.com/s2/favicons?domain=<host>`), which sends that host name to Google. Local and private hosts (localhost, `.local`, `.test`, private IP ranges) are never sent there.
 
 ## Development
 
