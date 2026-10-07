@@ -450,10 +450,10 @@ function linkIcon(k: Kit, url: string) {
 }
 
 /** A drag handle: a Client that reports the pointer's moves; nothing where the surface has none. */
-function dragHandle(k: Kit, key: string, isDragging: boolean) {
+function dragHandle(k: Kit, key: string, isDragging: boolean, width = 2) {
   if (k.Client === undefined) return null
   const { Client } = k
-  return <Client key={key} module="./drag-handle.tsx" props={{ glyph: '⠿', isDragging }} width={2} height={1} />
+  return <Client key={key} module="./drag-handle.tsx" props={{ glyph: '⠿', isDragging }} width={width} height={1} />
 }
 
 /**
@@ -504,10 +504,16 @@ function linkRow(
             {actions}
           </Box>
         </Box>
+        {/* A Button as the name is: the same inset, so both start at one edge. */}
         <Box key={`${key}-url`} position="relative" minWidth={0}>
-          <Text dimColor wrap="truncate-end">
-            {shortUrl(link.url)}
-          </Text>
+          <Button
+            key={`${key}-url-open`}
+            label={truncate(shortUrl(link.url), width + 6)}
+            plain
+            dimColor
+            {...k.quiet}
+            onPress={() => void openUrl($, link.url)}
+          />
           <Box
             position="absolute"
             top={1}
@@ -545,7 +551,7 @@ function draftForm($: Engine, k: Kit, d: Draft, l: Lang, active: string | null, 
       return (
         <Client
           key={key}
-          {...(isNarrow ? { width: '100%' } : { flexGrow: grow })}
+          width={isNarrow ? '100%' : `${grow}%`}
           module="./text-field.tsx"
           props={{ value, placeholder, isActive: active === key, icon: '', rev: d.rev }}
         />
@@ -594,8 +600,8 @@ function draftForm($: Engine, k: Kit, d: Draft, l: Lang, active: string | null, 
   }
   return (
     <Box flexDirection="row" alignItems="center" columnGap={1}>
-      {field('draft-title', 1)}
-      {field('draft-url', 2)}
+      {field('draft-title', 28)}
+      {field('draft-url', 38)}
       {scopes}
       {buttons}
     </Box>
@@ -604,6 +610,9 @@ function draftForm($: Engine, k: Kit, d: Draft, l: Lang, active: string | null, 
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    // A form left open by the last load starts closed: the band always draws.
+    await update($, section, () => null)
+    await update($, draft, now => ({ ...EMPTY_DRAFT, rev: now.rev + 1 }))
     await loadLang($)
     const stored = await $.store.get('scope')
     if (stored === 'project' || stored === 'session') await update($, scope, () => stored)
@@ -992,7 +1001,8 @@ export const register: Register = on => {
                     <Button key={`all-unpin-${s}-${i}`} label="✕" plain onPress={() => void unpin($, s, i)} />,
                   ],
                   i >= BAR_LINKS,
-                  canDrag ? dragHandle(k, `drag-pane-${s}-${i}`, paneDrag?.from === i) : null,
+                  // One cell wide, so the column centres it under the favicon.
+                  canDrag ? dragHandle(k, `drag-pane-${s}-${i}`, paneDrag?.from === i, 1) : null,
                   paneDrag !== null && paneDrag.to === i && paneDrag.from !== i,
                 )
                 return isEdited ? (
