@@ -878,15 +878,14 @@ export const register: Register = on => {
       const sort = pressed[s]
       const dir = sort !== null && sort.by === by && sortedAs(list, by) === sort.dir ? sort.dir : null
       const label = t(l, by === 'title' ? 'byTitle' : 'byUrl')
-      // Lit as «All» is while its pane is open: the active sort is the primary
-      // button, its arrow the direction (↑ A→Z, ↓ Z→A); the other is plain and dim.
-      return dir === null ? (
-        <Button key={`sort-${s}-${by}`} label={label} plain dimColor onPress={() => void sortBy($, s, by)} />
-      ) : (
+      // Both are the desktop's own button, so lighting one moves nothing: the
+      // pressed sort is primary (lit as «All» is), the other dim. The arrow is
+      // the order: ↓ A→Z, what a press gives first; ↑ Z→A.
+      return (
         <Button
           key={`sort-${s}-${by}`}
-          label={`${label} ${dir === 'asc' ? '↑' : '↓'}`}
-          variant="primary"
+          label={`${label} ${dir === 'desc' ? '↑' : '↓'}`}
+          {...(dir === null ? { dimColor: true } : { variant: 'primary' as const })}
           onPress={() => void sortBy($, s, by)}
         />
       )
