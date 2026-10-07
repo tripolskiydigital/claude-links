@@ -856,14 +856,15 @@ export const register: Register = on => {
     const sortButton = (s: Scope, list: PinnedLink[], by: SortBy) => {
       const dir = sortedAs(list, by)
       const label = t(l, by === 'title' ? 'byTitle' : 'byUrl')
-      // As the scope switch: the active sort is the desktop's own button, its
-      // arrow the direction (↑ A→Z, ↓ Z→A); the other is plain and dim.
+      // Lit as «All» is while its pane is open: the active sort is the primary
+      // button, its arrow the direction (↑ A→Z, ↓ Z→A); the other is plain and dim.
       return dir === null ? (
         <Button key={`sort-${s}-${by}`} label={label} plain dimColor onPress={() => void sortBy($, s, by)} />
       ) : (
         <Button
           key={`sort-${s}-${by}`}
           label={`${label} ${dir === 'asc' ? '↑' : '↓'}`}
+          variant="primary"
           onPress={() => void sortBy($, s, by)}
         />
       )
