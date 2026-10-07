@@ -663,13 +663,15 @@ export const register: Register = on => {
     if (e.module.endsWith('text-field.tsx') && typeof e.data === 'object' && e.data !== null) {
       const { kind, value, isSelected } = e.data as { kind?: string; value?: unknown; isSelected?: unknown }
       let text = typeof value === 'string' ? value : null
-      if (kind === 'copy' && text !== null && text !== '') await $.ui.copy({ text, surface: e.surface })
+      if ((kind === 'copy' || kind === 'cut') && text !== null && text !== '') await $.ui.copy({ text, surface: e.surface })
+      // ⌘X: copied above, and the field is emptied.
+      if (kind === 'cut') text = ''
       if (kind === 'paste' && text !== null) {
         // ⌘V in a field of the mod's: the clipboard, one line, over the selection or at the end.
         const clip = await readClipboard($)
         text = clip === '' ? text : `${isSelected === true ? '' : text}${clip}`
       }
-      if (kind === 'focus' || kind === 'change' || kind === 'paste') await update($, activeField, () => e.element)
+      if (kind === 'focus' || kind === 'change' || kind === 'paste' || kind === 'cut') await update($, activeField, () => e.element)
       if (e.element === 'search' && text !== null) await update($, search, () => text)
       if (e.element === 'draft-title' && text !== null) await update($, draft, now => ({ ...now, title: text }))
       if (e.element === 'draft-url' && text !== null) await update($, draft, now => ({ ...now, url: text }))

@@ -277,3 +277,43 @@ test('a link pinned with no name takes its page title', async ($, on) => {
   expect(chip?.props?.label?.endsWith('Site & Co')).toBe(true)
   await ui.unmount()
 })
+
+test('fields read control characters as chords and type no unprintable ones', async ($, on) => {
+  const copied: string[] = []
+  mock.env(on, { HOME: '/Users/t', TMPDIR: '/tmp/' })
+  mock.store(on, {})
+  mock.clock(on)
+  on('ui.toast', () => ({ value: undefined }) as never)
+  on('ui.copy', ($, e) => {
+    copied.push(e.text)
+    return { value: { isCopied: true } } as never
+  })
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'Box' }) as never)
+  on('session.root', () => ({ value: '/p/alpha' }))
+  on('session.id', () => ({ value: 'sess-1' }))
+  on('session.messages', () => ({ value: [] }))
+  on('process.run', ($, e) => ({
+    value: {
+      exitCode: e.argv[0] === 'pbpaste' ? 0 : 1,
+      stdout: e.argv[0] === 'pbpaste' ? 'pasted' : '',
+      stderr: '',
+      isStdoutTruncated: false,
+      isStderrTruncated: false,
+    },
+  }))
+  await $.session.start({ cwd: '/p/alpha', surface: 'desktop', isInteractive: true } as never)
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  await ui.press({ key: 'add' })
+  await typeInto(ui, 'draft-title', 'abc')
+  // ⌘X as \x18 cuts,  (an arrow's private-use code) types nothing, ⌘V as \x16 pastes.
+  await ui.key({ key: '\x18', in: 'draft-title' })
+  await ui.key({ key: '', in: 'draft-title' })
+  await ui.key({ key: '\x16', in: 'draft-title' })
+  await typeInto(ui, 'draft-url', 'x.io')
+  await ui.press({ key: 'draft-save' })
+  const chip = (await ui.find({ key: 'open-0' })) as { props?: { label?: string } } | undefined
+  expect(copied).toEqual(['abc'])
+  expect(chip?.props?.label?.endsWith('pasted')).toBe(true)
+  await ui.unmount()
+})
