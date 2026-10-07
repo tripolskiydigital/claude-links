@@ -717,27 +717,28 @@ export const register: Register = on => {
         onBar.map((link, i) => {
           const name = labelOf(link)
           const shown = truncate(name, budget)
-          // The whole chip lights under the pointer (the desktop rounds a Box's
-          // fill a little). The name is the mod's own text (link-label.tsx): a
-          // Button lights on its own under the pointer, a Link is drawn blue.
+          // The whole chip lights under the pointer, its fill rounded. Every chip
+          // is built alike and sits alone in a wrapper of its own: the desktop
+          // rounded only the first when they were siblings in the bar's row. The
+          // name is the mod's own text (link-label.tsx): a Button lights on its
+          // own under the pointer, a Link is drawn blue.
           return (
-            <Box
-              key={`chip-${i}`}
-              position="relative"
-              flexDirection="row"
-              alignItems="center"
-              flexShrink={0}
-              paddingRight={1}
-              {...k.base}
-              hover={{ backgroundColor: k.hover }}
-            >
-              {linkIcon(k, link.url)}
-              {k.Client !== undefined ? (
-                <k.Client key={`name-${i}`} module="./link-label.tsx" props={{ label: shown, url: link.url }} />
-              ) : (
-                <Button key={`open-${i}`} label={shown} plain {...k.quiet} onPress={() => void openUrl($, link.url)} />
-              )}
-              {shown !== name && (
+            <Box key={`chip-${i}`} position="relative" flexShrink={0}>
+              <Box
+                position="relative"
+                flexDirection="row"
+                alignItems="center"
+                paddingRight={1}
+                {...k.base}
+                hover={{ backgroundColor: k.hover }}
+              >
+                {linkIcon(k, link.url)}
+                {k.Client !== undefined ? (
+                  <k.Client key={`name-${i}`} module="./link-label.tsx" props={{ label: shown, url: link.url }} />
+                ) : (
+                  <Button key={`open-${i}`} label={shown} plain {...k.quiet} onPress={() => void openUrl($, link.url)} />
+                )}
+                {/* The full name and the URL, over the chip under the pointer. */}
                 <Box
                   position="absolute"
                   bottom={2}
@@ -756,7 +757,7 @@ export const register: Register = on => {
                     {shortUrl(link.url)}
                   </Text>
                 </Box>
-              )}
+              </Box>
             </Box>
           )
         })
