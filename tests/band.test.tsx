@@ -1,0 +1,127 @@
+import { expect, mock, test } from 'claude-code/testing'
+import type { TestBody } from 'claude-code/testing'
+
+const BAND = {
+  plugin: 'links-bar',
+  component: 'AbovePrompt',
+  props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 160 } as never,
+} as const
+
+const PINS = Array.from({ length: 6 }, (_, i) => ({ url: `https://site${i}.com/page`, title: i === 0 ? 'A rather long name for the first pinned link' : '' }))
+
+function stubs(
+  on: Parameters<TestBody>[1],
+  ran: string[],
+  store: Record<string, unknown>,
+  below: object = { type: 'Box' },
+) {
+  mock.env(on, { HOME: '/Users/t', TMPDIR: '/tmp/' })
+  mock.store(on, store)
+  mock.clock(on)
+  on('ui.toast', () => ({ value: undefined }) as never)
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  // What is drawn beneath the plugin: the engine's own empty band, unless a test says.
+  on('ui.render', { component: 'AbovePrompt' }, () => below as never)
+  on('session.root', () => ({ value: '/p/alpha' }))
+  on('session.id', () => ({ value: 'sess-1' }))
+  on('session.messages', () => ({
+    value: [{ role: 'user' as const, text: 'look at [Kan](https://kanban.slavic.digital/b)', toolUses: [] }],
+  }))
+  on('process.run', ($, e) => {
+    ran.push(e.argv.join(' '))
+    return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+}
+
+test('the bar shows four pinned links of the scope and opens one', async ($, on) => {
+  const ran: string[] = []
+  stubs(on, ran, { 'project:/p/alpha': PINS, scope: 'project' })
+  await $.session.start({ cwd: '/p/alpha', surface: 'desktop', isInteractive: true } as never)
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...BAND, surface })
+    expect(await ui.find({ key: 'open-3' })).toBeDefined()
+    expect(await ui.find({ key: 'open-4' })).toBeUndefined()
+    await ui.press({ key: 'open-1' })
+    await ui.unmount()
+  }
+  expect(ran.filter(r => r.startsWith('open '))).toEqual(['open https://site1.com/page', 'open https://site1.com/page'])
+})
+
+test('a recent link pins to the session, a typed one to the project', async ($, on) => {
+  const ran: string[] = []
+  const opened: string[] = []
+  stubs(on, ran, {})
+  on('ui.panes', () => ({ value: [] }))
+  on('ui.open', ($, e) => {
+    opened.push(e.id)
+    return { value: { isPlaced: true as const } }
+  })
+  await $.session.start({ cwd: '/p/alpha', surface: 'desktop', isInteractive: true } as never)
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  // Nothing pinned yet in either scope.
+  expect(await ui.find({ key: 'open-0' })).toBeUndefined()
+
+  await ui.press({ key: 'recent' })
+  await ui.press({ key: 'recent-session-0' })
+
+  await ui.press({ key: 'add' })
+  await ui.input({ key: 'draft-url', text: 'figma.com/file/x', kind: 'change' })
+  await ui.input({ key: 'draft-title', text: 'Макет', kind: 'change' })
+  await ui.press({ key: 'draft-save' })
+  // The form closed and the project's bar holds the typed link.
+  expect(await ui.find({ key: 'draft-url' })).toBeUndefined()
+  await ui.press({ key: 'open-0' })
+
+  await ui.press({ key: 'scope-session' })
+  await ui.press({ key: 'open-0' })
+
+  // An entry of «Recent links» opens and the list folds away.
+  await ui.press({ key: 'recent' })
+  await ui.press({ key: 'recent-0-open' })
+  expect(await ui.find({ key: 'recent-close' })).toBeUndefined()
+
+  // «All links» is a side pane.
+  await ui.press({ key: 'all' })
+  expect(opened).toEqual(['links-bar'])
+  await ui.unmount()
+
+  const pane = await $.ui.mount({
+    plugin: 'links-bar',
+    surface: 'desktop',
+    component: 'Pane',
+    requestId: 'links-bar',
+    props: { title: 'All links', isFocused: true, bodyColumns: 70 } as never,
+  })
+  expect(await pane.find({ key: 'all-project-0-open' })).toBeDefined()
+  expect(await pane.find({ key: 'all-session-0-open' })).toBeDefined()
+
+  // ✎ opens the form under the row; a new name is saved in place.
+  await pane.press({ key: 'all-edit-project-0' })
+  await pane.input({ key: 'draft-title', text: 'Макет v2', kind: 'change' })
+  await pane.press({ key: 'draft-save' })
+  expect(await pane.find({ key: 'draft-url' })).toBeUndefined()
+
+  await pane.press({ key: 'all-move-session-0' })
+  expect(await pane.find({ key: 'all-session-0-open' })).toBeUndefined()
+  expect(await pane.find({ key: 'all-project-1-open' })).toBeDefined()
+  await pane.unmount()
+
+  expect(ran.filter(r => r.startsWith('open '))).toEqual([
+    'open https://figma.com/file/x',
+    'open https://kanban.slavic.digital/b',
+    'open https://kanban.slavic.digital/b',
+  ])
+})
+
+test('a row another plugin drew in the band stays above the links', async ($, on) => {
+  const ran: string[] = []
+  stubs(on, ran, { 'project:/p/alpha': PINS }, { type: 'Box', props: { key: 'tabs-row' }, children: ['project tabs'] })
+  await $.session.start({ cwd: '/p/alpha', surface: 'desktop', isInteractive: true } as never)
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await ui.find({ key: 'tabs-row' })).toBeDefined()
+  expect(await ui.find({ key: 'open-0' })).toBeDefined()
+  await ui.unmount()
+})
