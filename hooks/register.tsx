@@ -721,253 +721,261 @@ export const register: Register = on => {
     // stays, and the links row goes under it.
     const below = await next(e)
     if (e.props.hasSurvey) return below
+    // A fault in the links row costs the row alone: what the plugins beneath
+    // drew (the tabs) is drawn as it is.
+    try {
 
-    const [rec, pLinks, sLinks, sc, sec, d, icons, l, isPaneOpen, dragged, typing] = await Promise.all([
-      read($, recent),
-      read($, projectLinks),
-      read($, sessionLinks),
-      read($, scope),
-      read($, section),
-      read($, draft),
-      read($, favicons),
-      read($, lang),
-      read($, paneOpen),
-      read($, drag),
-      read($, activeField),
-    ])
-    const k = kitOf($.ui.resolve(e), e.surface, icons)
-    const { Box, Text, Button } = k
-    // The add form's parts that need `$`, made here: the fields and the buttons' actions.
-    const formTitle = textField($, e, 'draft-title', fieldProps(l, d, 'draft-title', typing), '100%')
-    const formUrl = textField($, e, 'draft-url', fieldProps(l, d, 'draft-url', typing), '100%')
-    const formActions: FormActions = {
-      scope: s => void update($, draft, now => ({ ...now, scope: s })),
-      cancel: () => void closeDraft($),
-      save: () => void submitDraft($, {}),
-    }
-    const budget = labelBudget(e.props.bodyColumns, Math.min(BAR_LINKS, (sc === 'project' ? pLinks : sLinks).length))
+      const [rec, pLinks, sLinks, sc, sec, d, icons, l, isPaneOpen, dragged, typing] = await Promise.all([
+        read($, recent),
+        read($, projectLinks),
+        read($, sessionLinks),
+        read($, scope),
+        read($, section),
+        read($, draft),
+        read($, favicons),
+        read($, lang),
+        read($, paneOpen),
+        read($, drag),
+        read($, activeField),
+      ])
+      const k = kitOf($.ui.resolve(e), e.surface, icons)
+      const { Box, Text, Button } = k
+      // The add form's parts that need `$`, made here: the fields and the buttons' actions.
+      // Made only while the form is open: a surface module made and not drawn
+    // left the whole band undrawn, the tabs too.
+    const formTitle = sec === 'add' ? textField($, e, 'draft-title', fieldProps(l, d, 'draft-title', typing), '100%') : null
+      const formUrl = sec === 'add' ? textField($, e, 'draft-url', fieldProps(l, d, 'draft-url', typing), '100%') : null
+      const formActions: FormActions = {
+        scope: s => void update($, draft, now => ({ ...now, scope: s })),
+        cancel: () => void closeDraft($),
+        save: () => void submitDraft($, {}),
+      }
+      const budget = labelBudget(e.props.bodyColumns, Math.min(BAR_LINKS, (sc === 'project' ? pLinks : sLinks).length))
 
-    const links = sc === 'project' ? pLinks : sLinks
-    const onBar = links.slice(0, BAR_LINKS)
-    const total = pLinks.length + sLinks.length
+      const links = sc === 'project' ? pLinks : sLinks
+      const onBar = links.slice(0, BAR_LINKS)
+      const total = pLinks.length + sLinks.length
 
-    const scopeSwitch = (
-      <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
-        {/* The chosen scope is the desktop's own (rounded) button; the other one is
-            plain and dim. A Box fill behind a button draws square corners. */}
-        {(['project', 'session'] as const).map(s =>
-          s === sc ? (
-            <Button key={`scope-${s}`} label={t(l, s)} onPress={() => void setScope($, s)} />
-          ) : (
-            <Button key={`scope-${s}`} label={t(l, s)} plain dimColor onPress={() => void setScope($, s)} />
-          ),
-        )}
-      </Box>
-    )
-
-    const chips =
-      onBar.length === 0 ? (
-        <Text dimColor wrap="truncate">
-          {t(l, sc === 'project' ? 'emptyProject' : 'emptySession')}
-        </Text>
-      ) : (
-        onBar.map((link, i) => {
-          const name = labelOf(link)
-          const shown = truncate(name, budget)
-          // The chip is the desktop's own button, so it lights rounded and as
-          // tall as «Recent» and «All». The favicon lies over the button's left
-          // end, room kept for it by figure spaces (plain ones would collapse).
-          const host = hostOf(link.url)
-          return (
-            <Box key={`chip-${i}`} position="relative" flexShrink={0}>
-              <Button
-                key={`open-${i}`}
-                label={k.Svg !== undefined ? `${ICON_ROOM}${shown}` : shown}
-                plain
-                onPress={() => void openUrl($, link.url)}
-              />
-              {k.Svg !== undefined && (
-                <Box position="absolute" top={0} left={1}>
-                  <k.Svg
-                    source={faviconSvg(icons[host], host, BUTTON_HEIGHT)}
-                    alt={host}
-                    width={ICON_BOX}
-                    height={BUTTON_HEIGHT}
-                  />
-                </Box>
-              )}
-              {/* The full name and the URL, over the chip under the pointer. */}
-              <Box
-                position="absolute"
-                bottom={2}
-                left={0}
-                display="none"
-                hover={{ display: 'flex' }}
-                flexDirection="column"
-                minWidth={Math.min(64, Math.max([...name].length, shortUrl(link.url).length) + 4)}
-                paddingX={1}
-                borderStyle="round"
-                borderColor="inactive"
-                backgroundColor="userMessageBackground"
-              >
-                <Text>{name}</Text>
-                <Text dimColor wrap="truncate">
-                  {shortUrl(link.url)}
-                </Text>
-              </Box>
-            </Box>
-          )
-        })
+      const scopeSwitch = (
+        <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
+          {/* The chosen scope is the desktop's own (rounded) button; the other one is
+              plain and dim. A Box fill behind a button draws square corners. */}
+          {(['project', 'session'] as const).map(s =>
+            s === sc ? (
+              <Button key={`scope-${s}`} label={t(l, s)} onPress={() => void setScope($, s)} />
+            ) : (
+              <Button key={`scope-${s}`} label={t(l, s)} plain dimColor onPress={() => void setScope($, s)} />
+            ),
+          )}
+        </Box>
       )
 
-    // «Recent» as a tab's recent sessions in the tabs mod: hovering the button
-    // shows the list above it, sized to its rows; the pointer may move into it.
-    const recentWidth = Math.max(16, Math.min(40, Math.floor(e.props.bodyColumns / 3)))
-    // Two columns, «Project» and «Session», named once in the header: 📌 pins the
-    // link there, ✓ says it is pinned there and unpins it; ✎ renames a pinned one.
-    // Every row is as wide as the header: the name has a column of its own, so the
-    // marks stand under their titles whatever the name's length.
-    const columnWidth = Math.max([...t(l, 'project')].length, [...t(l, 'session')].length) + 3
-    // The window's width is set, not left to its rows, and it fits the band: its
-    // right edge at the button's, it opens leftward over the bar.
-    const columnsWidth = 2 * columnWidth + 3
-    const popupChrome = 2 + 2 + 2
-    const nameWidth = Math.max(12, Math.min(recentWidth + 4, e.props.bodyColumns - 4 - columnsWidth - popupChrome))
-    const popupWidth = nameWidth + columnsWidth + popupChrome
-    const recentButtonWidth = [...t(l, 'recent')].length + 4
-    const columns = (cells: [RenderChildren, RenderChildren, RenderChildren]) => (
-      <Box flexDirection="row" alignItems="center" flexShrink={0}>
-        <Box width={columnWidth} justifyContent="center">
-          {cells[0]}
-        </Box>
-        <Box width={columnWidth} justifyContent="center">
-          {cells[1]}
-        </Box>
-        <Box width={3} justifyContent="center">
-          {cells[2]}
-        </Box>
-      </Box>
-    )
-    const recentList = (
-      <Box
-        position="absolute"
-        bottom={2}
-        left={recentButtonWidth - popupWidth}
-        width={popupWidth}
-        display="none"
-        hover={{ display: 'flex' }}
-        flexDirection="column"
-        paddingX={1}
-        borderStyle="round"
-        borderColor="inactive"
-        backgroundColor="userMessageBackground"
-      >
-        <Box flexDirection="row" alignItems="center" columnGap={2}>
-          <Box width={nameWidth} flexShrink={0} overflow="hidden">
-            <Text dimColor wrap="truncate">
-              {t(l, 'recentTitle')}
-            </Text>
-          </Box>
-          {rec.length > 0 &&
-            columns([
-              <Text dimColor>{t(l, 'project')}</Text>,
-              <Text dimColor>{t(l, 'session')}</Text>,
-              null,
-            ])}
-        </Box>
-        {rec.length === 0 && <Text dimColor>{t(l, 'recentEmpty')}</Text>}
-        {rec.map((link, i) => {
-          const projectIndex = pLinks.findIndex(p => p.url === link.url)
-          const sessionIndex = sLinks.findIndex(p => p.url === link.url)
-          const pinCell = (s: Scope, index: number) =>
-            index >= 0 ? (
-              <Button key={`recent-${s}-${i}`} label="✓" plain onPress={() => void unpin($, s, index)} />
-            ) : (
-              <Button key={`recent-${s}-${i}`} label="📌" plain dimColor onPress={() => void pin($, s, link)} />
-            )
-          // Rename the pin the bar shows now, else the other one.
-          const editable: [Scope, number] | null =
-            (sc === 'session' ? sessionIndex : projectIndex) >= 0
-              ? [sc, sc === 'session' ? sessionIndex : projectIndex]
-              : projectIndex >= 0
-                ? ['project', projectIndex]
-                : sessionIndex >= 0
-                  ? ['session', sessionIndex]
-                  : null
-          return (
-            <Box flexDirection="row" alignItems="center" columnGap={2}>
-              <Box width={nameWidth} flexShrink={0} flexDirection="row" alignItems="center" columnGap={1} overflow="hidden">
-                {linkIcon(k, link.url)}
+      const chips =
+        onBar.length === 0 ? (
+          <Text dimColor wrap="truncate">
+            {t(l, sc === 'project' ? 'emptyProject' : 'emptySession')}
+          </Text>
+        ) : (
+          onBar.map((link, i) => {
+            const name = labelOf(link)
+            const shown = truncate(name, budget)
+            // The chip is the desktop's own button, so it lights rounded and as
+            // tall as «Recent» and «All». The favicon lies over the button's left
+            // end, room kept for it by figure spaces (plain ones would collapse).
+            const host = hostOf(link.url)
+            return (
+              <Box key={`chip-${i}`} position="relative" flexShrink={0}>
                 <Button
-                  key={`recent-${i}-open`}
-                  label={truncate(labelOf(link), nameWidth - 4, false)}
+                  key={`open-${i}`}
+                  label={k.Svg !== undefined ? `${ICON_ROOM}${shown}` : shown}
                   plain
                   onPress={() => void openUrl($, link.url)}
                 />
+                {k.Svg !== undefined && (
+                  <Box position="absolute" top={0} left={1}>
+                    <k.Svg
+                      source={faviconSvg(icons[host], host, BUTTON_HEIGHT)}
+                      alt={host}
+                      width={ICON_BOX}
+                      height={BUTTON_HEIGHT}
+                    />
+                  </Box>
+                )}
+                {/* The full name and the URL, over the chip under the pointer. */}
+                <Box
+                  position="absolute"
+                  bottom={2}
+                  left={0}
+                  display="none"
+                  hover={{ display: 'flex' }}
+                  flexDirection="column"
+                  minWidth={Math.min(64, Math.max([...name].length, shortUrl(link.url).length) + 4)}
+                  paddingX={1}
+                  borderStyle="round"
+                  borderColor="inactive"
+                  backgroundColor="userMessageBackground"
+                >
+                  <Text>{name}</Text>
+                  <Text dimColor wrap="truncate">
+                    {shortUrl(link.url)}
+                  </Text>
+                </Box>
               </Box>
-              {columns([
-                pinCell('project', projectIndex),
-                pinCell('session', sessionIndex),
-                editable !== null ? (
-                  <Button
-                    key={`recent-edit-${i}`}
-                    label="✎"
-                    plain
-                    dimColor
-                    onPress={() => void renamePin($, editable[0], editable[1])}
-                  />
-                ) : null,
-              ])}
-            </Box>
-          )
-        })}
-      </Box>
-    )
+            )
+          })
+        )
 
-    const bar = (
-      <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1}>
-        <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={1}>
-          {scopeSwitch}
-          <Box key="add-box" flexShrink={0}>
+      // «Recent» as a tab's recent sessions in the tabs mod: hovering the button
+      // shows the list above it, sized to its rows; the pointer may move into it.
+      const recentWidth = Math.max(16, Math.min(40, Math.floor(e.props.bodyColumns / 3)))
+      // Two columns, «Project» and «Session», named once in the header: 📌 pins the
+      // link there, ✓ says it is pinned there and unpins it; ✎ renames a pinned one.
+      // Every row is as wide as the header: the name has a column of its own, so the
+      // marks stand under their titles whatever the name's length.
+      const columnWidth = Math.max([...t(l, 'project')].length, [...t(l, 'session')].length) + 3
+      // The window's width is set, not left to its rows, and it fits the band: its
+      // right edge at the button's, it opens leftward over the bar.
+      const columnsWidth = 2 * columnWidth + 3
+      const popupChrome = 2 + 2 + 2
+      const nameWidth = Math.max(12, Math.min(recentWidth + 4, e.props.bodyColumns - 4 - columnsWidth - popupChrome))
+      const popupWidth = nameWidth + columnsWidth + popupChrome
+      const recentButtonWidth = [...t(l, 'recent')].length + 4
+      const columns = (cells: [RenderChildren, RenderChildren, RenderChildren]) => (
+        <Box flexDirection="row" alignItems="center" flexShrink={0}>
+          <Box width={columnWidth} justifyContent="center">
+            {cells[0]}
+          </Box>
+          <Box width={columnWidth} justifyContent="center">
+            {cells[1]}
+          </Box>
+          <Box width={3} justifyContent="center">
+            {cells[2]}
+          </Box>
+        </Box>
+      )
+      const recentList = (
+        <Box
+          position="absolute"
+          bottom={2}
+          left={recentButtonWidth - popupWidth}
+          width={popupWidth}
+          display="none"
+          hover={{ display: 'flex' }}
+          flexDirection="column"
+          paddingX={1}
+          borderStyle="round"
+          borderColor="inactive"
+          backgroundColor="userMessageBackground"
+        >
+          <Box flexDirection="row" alignItems="center" columnGap={2}>
+            <Box width={nameWidth} flexShrink={0} overflow="hidden">
+              <Text dimColor wrap="truncate">
+                {t(l, 'recentTitle')}
+              </Text>
+            </Box>
+            {rec.length > 0 &&
+              columns([
+                <Text dimColor>{t(l, 'project')}</Text>,
+                <Text dimColor>{t(l, 'session')}</Text>,
+                null,
+              ])}
+          </Box>
+          {rec.length === 0 && <Text dimColor>{t(l, 'recentEmpty')}</Text>}
+          {rec.map((link, i) => {
+            const projectIndex = pLinks.findIndex(p => p.url === link.url)
+            const sessionIndex = sLinks.findIndex(p => p.url === link.url)
+            const pinCell = (s: Scope, index: number) =>
+              index >= 0 ? (
+                <Button key={`recent-${s}-${i}`} label="✓" plain onPress={() => void unpin($, s, index)} />
+              ) : (
+                <Button key={`recent-${s}-${i}`} label="📌" plain dimColor onPress={() => void pin($, s, link)} />
+              )
+            // Rename the pin the bar shows now, else the other one.
+            const editable: [Scope, number] | null =
+              (sc === 'session' ? sessionIndex : projectIndex) >= 0
+                ? [sc, sc === 'session' ? sessionIndex : projectIndex]
+                : projectIndex >= 0
+                  ? ['project', projectIndex]
+                  : sessionIndex >= 0
+                    ? ['session', sessionIndex]
+                    : null
+            return (
+              <Box flexDirection="row" alignItems="center" columnGap={2}>
+                <Box width={nameWidth} flexShrink={0} flexDirection="row" alignItems="center" columnGap={1} overflow="hidden">
+                  {linkIcon(k, link.url)}
+                  <Button
+                    key={`recent-${i}-open`}
+                    label={truncate(labelOf(link), nameWidth - 4, false)}
+                    plain
+                    onPress={() => void openUrl($, link.url)}
+                  />
+                </Box>
+                {columns([
+                  pinCell('project', projectIndex),
+                  pinCell('session', sessionIndex),
+                  editable !== null ? (
+                    <Button
+                      key={`recent-edit-${i}`}
+                      label="✎"
+                      plain
+                      dimColor
+                      onPress={() => void renamePin($, editable[0], editable[1])}
+                    />
+                  ) : null,
+                ])}
+              </Box>
+            )
+          })}
+        </Box>
+      )
+
+      const bar = (
+        <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1}>
+          <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={1}>
+            {scopeSwitch}
+            <Box key="add-box" flexShrink={0}>
+              <Button
+                key="add"
+                label="+"
+                {...(sec === 'add' ? { variant: 'primary' as const } : {})}
+                onPress={() => void toggleAdd($)}
+              />
+            </Box>
+            {chips}
+          </Box>
+          <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
+            <Box key="recent-anchor" position="relative" flexShrink={0}>
+              <Button key="recent" label={t(l, 'recent')} onPress={() => void refreshRecent($)} />
+              {recentList}
+            </Box>
             <Button
-              key="add"
-              label="+"
-              {...(sec === 'add' ? { variant: 'primary' as const } : {})}
-              onPress={() => void toggleAdd($)}
+              key="all"
+              label={total > 0 ? `${t(l, 'all')} · ${total}` : t(l, 'all')}
+              {...(isPaneOpen ? { variant: 'primary' as const } : {})}
+              onPress={() => void togglePane($)}
             />
           </Box>
-          {chips}
         </Box>
-        <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
-          <Box key="recent-anchor" position="relative" flexShrink={0}>
-            <Button key="recent" label={t(l, 'recent')} onPress={() => void refreshRecent($)} />
-            {recentList}
-          </Box>
-          <Button
-            key="all"
-            label={total > 0 ? `${t(l, 'all')} · ${total}` : t(l, 'all')}
-            {...(isPaneOpen ? { variant: 'primary' as const } : {})}
-            onPress={() => void togglePane($)}
-          />
-        </Box>
-      </Box>
-    )
-
-    const mine =
-      sec === 'add' ? (
-        <Box flexDirection="column" rowGap={1}>
-          {bar}
-          {formLayout(k, l, d, formTitle, formUrl, formActions)}
-        </Box>
-      ) : (
-        bar
       )
-    return isEmptyTree(below) ? mine : (
-      <Box flexDirection="column" rowGap={1}>
-        {below}
-        {mine}
-      </Box>
-    )
+
+      const mine =
+        sec === 'add' ? (
+          <Box flexDirection="column" rowGap={1}>
+            {bar}
+            {formLayout(k, l, d, formTitle, formUrl, formActions)}
+          </Box>
+        ) : (
+          bar
+        )
+      return isEmptyTree(below) ? mine : (
+        <Box flexDirection="column" rowGap={1}>
+          {below}
+          {mine}
+        </Box>
+      )
+    } catch {
+      return below
+    }
   })
 
   // «All»: every pinned link of the project and the session, in a side pane:
@@ -989,8 +997,10 @@ export const register: Register = on => {
     // A field of the pane holds the keys only while the pane has the focus.
     const isTyping = e.props.isFocused ? typingIn : null
     // The edit form's parts that need `$`, made here: the fields and the buttons' actions.
-    const paneTitle = textField($, e, 'draft-title', fieldProps(l, d, 'draft-title', isTyping), '100%')
-    const paneUrl = textField($, e, 'draft-url', fieldProps(l, d, 'draft-url', isTyping), '100%')
+    // Made only while a link is edited: a surface module made and not drawn
+    // left the whole site undrawn.
+    const paneTitle = d.edit !== null ? textField($, e, 'draft-title', fieldProps(l, d, 'draft-title', isTyping), '100%') : null
+    const paneUrl = d.edit !== null ? textField($, e, 'draft-url', fieldProps(l, d, 'draft-url', isTyping), '100%') : null
     const paneActions: FormActions = {
       scope: s => void update($, draft, now => ({ ...now, scope: s })),
       cancel: () => void closeDraft($),
