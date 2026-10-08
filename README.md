@@ -28,7 +28,7 @@ It is built on Claude Code's **mods** (plugins of function hooks), so it does no
 ## Requirements
 
 - **macOS** and **Claude Desktop** with mods support (Claude Code engine 2.1.289 or later).
-- `curl` (part of macOS) for favicons and titles.
+- `curl` (part of macOS) for favicons in PNG or ICO.
 - The mod draws in Claude Desktop's Code tab. It also loads in the terminal `claude`, where it draws a simpler text version.
 
 ## Install
@@ -81,7 +81,7 @@ The fields are the mod's own: click one to type, Enter saves, and ⌘A, ⌘C, �
 | --- | --- |
 | Recent links | the current session's transcript: what you and Claude wrote, and the links tools were called with (WebFetch, a browser's navigate); tool output is not scanned |
 | Pinned links, the chosen sort, the switch position | the plugin's own store (Claude Code keeps it), keyed by project folder or session id |
-| Favicons and titles | the link's page, fetched with `curl`: its `<title>` and `<link rel="icon">`s; then `/favicon.ico`; then, for a public host, Google's favicon service. Favicons are kept in the plugin's store |
+| Favicons and titles | the link's page, fetched through the mod API's http call (`$.http.fetch`): its `<title>` and `<link rel="icon">`s, then the site's `/favicon.ico`. SVG icons come the same way; PNG and ICO ones are downloaded with `curl`, as the http call reads text only. Only the link's own site is asked. Favicons are kept in the plugin's store |
 | Interface language | the `locale` field of `~/Library/Application Support/Claude/config.json`, picked out by `grep`: the mod never reads the file itself, which also holds account data |
 | Opening a link | `open <url>`, your default browser |
 
@@ -89,26 +89,27 @@ Pinned links are read again from the store every 5 seconds, so a project's links
 
 ## What the mod reads, writes and runs
 
-**What the mod sends, and where.** To find a favicon and a title the mod fetches **the page of a link you pinned or that the session mentioned**, the icons that page names, and the site's `/favicon.ico`. When a public site has no icon it can read, it asks **Google's favicon service** with the site's host name (`https://www.google.com/s2/favicons?domain=<host>`); local and private hosts (localhost, `.local`, `.test`, private IP ranges) are never sent there. Nothing else leaves your Mac.
+**What the mod sends, and where.** To find a favicon and a title the mod requests, from **the link's own site only**, the page of a link you pinned or that the session mentioned, the icons that page names, and the site's `/favicon.ico`. These are plain GET requests for public pages: they carry no data of yours, no cookies and no credentials, and nothing read from the conversation or your files goes into them beyond the link itself. No other service is asked, and nothing else leaves your Mac.
 
 **Reads**
 
 - The current session's transcript, through the mod API (`$.session.messages`).
 - The `locale` field of Claude Desktop's settings, through `grep` (see the table above).
 - The clipboard, with `pbpaste`, only when you press ⌘V in one of the mod's fields.
-- The environment variables `HOME`, `TMPDIR` and `LANG`.
+- The environment variables `HOME` and `TMPDIR`.
 
-**Writes** no file of its own outside the temp folder: pinned links, sorts, the switch position and favicons (data URIs of at most 24 KB) go to the plugin store that Claude Code keeps for every plugin. `curl` writes the pages and pictures it fetches to `$TMPDIR/links-bar-*`. ⌘C and ⌘X write the clipboard through the app (`$.ui.copy`).
+**Writes** no file of its own outside the temp folder: pinned links, sorts, the switch position and favicons (data URIs of at most 24 KB) go to the plugin store that Claude Code keeps for every plugin. `curl` writes the PNG and ICO favicons it downloads to `$TMPDIR/links-bar-<host>.icon`, which the mod then reads (`fs.read`) and keeps in the store. ⌘C and ⌘X write the clipboard through the app (`$.ui.copy`).
 
-**Runs**, each by name; the arguments shown in angle brackets are worked out at the call:
+**Runs** four programs, each by name; nothing it downloads is ever run:
 
-| Program | When | Why |
-| --- | --- | --- |
-| `open <url>` | you click a link | opens it in your default browser |
-| `curl -sL --max-time 8 … -o $TMPDIR/links-bar-page-… <url>` | a link is pinned or mentioned and its site has no favicon in the store yet; a link is pinned without a name | reads the page's title and the icons it declares |
-| `curl -sL --max-time 6 --max-filesize 24000 … <icon>` | after that | downloads the favicon |
-| `pbpaste` | you press ⌘V in one of the mod's fields | reads the clipboard (asked for in UTF-8) |
-| `grep -o -m 1 "locale"… <home>/Library/Application Support/Claude/config.json` | at session start | picks out the interface language without the mod reading the file |
+| Program | Arguments | When | Why |
+| --- | --- | --- | --- |
+| `open` | the link | you click a link | opens it in your default browser |
+| `curl` | the icon's address, a 6-second limit, a 24 KB limit, and the temp file to write | a pinned or mentioned link's site has no favicon in the store yet, and its icon is a PNG or ICO | downloads that picture; it is read as an image and kept in the store, never run |
+| `pbpaste` | none (UTF-8 is asked for through its environment) | you press ⌘V in one of the mod's fields | reads the clipboard to paste it |
+| `grep` | `-o -m 1` and a pattern for `"locale"`, in Claude Desktop's `config.json` | at session start | picks out the interface language without the mod reading the file |
+
+Pages and SVG icons are requested through the mod API's http call, not a program.
 
 **Hooks**
 
@@ -122,7 +123,7 @@ The mod adds no commands, tools or agents for Claude, and changes nothing Claude
 
 - Mods can't style the app's own fields, links or buttons, so the mod draws its own text fields and drag handles: the cursor stays at the end of the text, and part of a text can't be selected with the mouse.
 - The look follows Claude Desktop's current UI; a large redesign of the app may need an update of the mod.
-- A page behind a login or a bot check gives no title and may give no icon: the bar shows the link's address and the site's first letter instead.
+- A page behind a login or a bot check gives no title and may give no icon, and a site that names no icon has none: the bar shows the link's address and the site's first letter instead.
 
 ## Uninstall
 
@@ -130,7 +131,7 @@ The mod adds no commands, tools or agents for Claude, and changes nothing Claude
 claude plugin uninstall links-bar@claude-links
 ```
 
-Pinned links and favicons go with the plugin's store. The pages and pictures `curl` fetched are in `$TMPDIR/links-bar-*`, which macOS clears by itself.
+Pinned links and favicons go with the plugin's store. The pictures `curl` downloaded are in `$TMPDIR/links-bar-*`, which macOS clears by itself.
 
 ## Development
 

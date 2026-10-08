@@ -11,7 +11,6 @@ import {
   faviconMime,
   faviconSvg,
   hostOf,
-  isPrivateHost,
   labelBudget,
   labelOf,
   dropIndexY,
@@ -105,7 +104,7 @@ async function refreshRecent($: Engine): Promise<void> {
 
 /** The desktop's settings file: its `locale` is the interface language. */
 async function loadLang($: Engine): Promise<Lang> {
-  let found: Lang = langOf((await $.env.get('LANG')) ?? undefined)
+  let found: Lang = 'en'
   try {
     const path = `${(await $.env.get('HOME')) ?? ''}/Library/Application Support/Claude/config.json`
     // The file holds other things (encrypted tokens among them): grep hands back
@@ -114,7 +113,7 @@ async function loadLang($: Engine): Promise<Lang> {
     const locale = /"locale"\s*:\s*"([^"]*)"/.exec(grep.stdout)?.[1]
     if (locale !== undefined) found = langOf(locale)
   } catch {
-    // No desktop app: the shell's language stands.
+    // No desktop app: English.
   }
   if (found !== (await read($, lang))) await update($, lang, () => found)
   return found
@@ -132,9 +131,6 @@ function asStoredFavicon(value: unknown): StoredFavicon | null {
   return typeof v.uri === 'string' && typeof v.at === 'number' ? { uri: v.uri, at: v.at } : null
 }
 
-/** A page fetched past this is cut: its head is what is read. */
-const MAX_PAGE_BYTES = 3_000_000
-
 async function tempPath($: Engine, name: string): Promise<string> {
   const dir = ((await $.env.get('TMPDIR')) ?? '/tmp/').replace(/\/?$/, '/')
   return `${dir}links-bar-${name.replace(/[^\w.-]/g, '_').slice(0, 80)}`
@@ -143,20 +139,16 @@ async function tempPath($: Engine, name: string): Promise<string> {
 /** Pages read this load, by URL: a favicon and a title are read off one fetch. */
 const pages = new Map<string, Promise<PageMeta | null>>()
 
-/** Fetches a page with curl and reads its title and declared icons; null when it does not answer. */
+/** Fetches a page through the host's http call and reads its title and declared icons; null when it does not answer. */
 function fetchPage($: Engine, url: string): Promise<PageMeta | null> {
   const known = pages.get(url)
   if (known !== undefined) return known
   const loading = (async () => {
     try {
-      const tmp = await tempPath($, `page-${url}.html`)
-      const got = await $.process.run(
-        ['curl', '-sL', '--max-time', '8', '--max-filesize', String(MAX_PAGE_BYTES), '-o', tmp, '-w', '%{http_code} %{url_effective}', url],
-        { timeoutMs: 12_000 },
-      )
-      const [code, effective] = got.stdout.trim().split(' ')
-      if (got.exitCode !== 0 || code !== '200') return null
-      return parseHead(await $.fs.read(tmp), effective ?? url)
+      const res = await $.http.fetch(url)
+      const type = res.headers['content-type'] ?? ''
+      if (!res.ok || (type !== '' && !/html|xml/i.test(type))) return null
+      return parseHead(res.text, url)
     } catch {
       return null
     }
@@ -165,7 +157,24 @@ function fetchPage($: Engine, url: string): Promise<PageMeta | null> {
   return loading
 }
 
-/** Downloads one picture with curl; a data URI when it is a small image, else null. */
+/** An SVG favicon through the host's http call (it is text); a data URI, or null. */
+async function fetchSvgIcon($: Engine, source: string): Promise<string | null> {
+  try {
+    const res = await $.http.fetch(source)
+    const type = (res.headers['content-type'] ?? '').toLowerCase()
+    const isSvg = type.includes('svg') || /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(res.text)
+    if (!res.ok || !isSvg || res.text.length > MAX_FAVICON_BYTES) return null
+    return `data:image/svg+xml;utf8,${encodeURIComponent(res.text)}`
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Downloads one raster favicon (PNG, ICO) with curl, to the temp folder: the
+ * host's http call reads a body as text, which a picture's bytes do not
+ * survive. A data URI when it is a small image, else null.
+ */
 async function fetchImage($: Engine, source: string, tmp: string): Promise<string | null> {
   try {
     const got = await $.process.run(
@@ -187,8 +196,7 @@ async function fetchImage($: Engine, source: string, tmp: string): Promise<strin
 
 /**
  * A link's favicon: the icons its page declares (`<link rel="icon">`, SVG
- * first), then the site's /favicon.ico, then, for a public host, Google's
- * favicon service. curl writes each picture to the temp folder.
+ * first), then the site's /favicon.ico. Only the site itself is asked.
  */
 async function fetchFavicon($: Engine, url: string, host: string): Promise<string | null> {
   const origin = new URL(url).origin
@@ -196,12 +204,9 @@ async function fetchFavicon($: Engine, url: string, host: string): Promise<strin
   // A page that does not answer, or names no icon (a 404), leaves the site's own.
   if ((page?.icons.length ?? 0) === 0 && `${origin}/` !== url) page = await fetchPage($, `${origin}/`)
   const sources = [...(page?.icons ?? []), `${origin}/favicon.ico`]
-  if (!isPrivateHost(host)) {
-    sources.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`)
-  }
   const tmp = await tempPath($, `${host}.icon`)
   for (const source of sources) {
-    const uri = await fetchImage($, source, tmp)
+    const uri = /\.svg(\?|#|$)/i.test(source) ? await fetchSvgIcon($, source) : await fetchImage($, source, tmp)
     if (uri !== null) return uri
   }
   return null

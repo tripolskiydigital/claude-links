@@ -254,19 +254,18 @@ test('a link pinned with no name takes its page title', async ($, on) => {
   on('session.root', () => ({ value: '/p/alpha' }))
   on('session.id', () => ({ value: 'sess-1' }))
   on('session.messages', () => ({ value: [] }))
-  on('process.run', ($, e) => {
-    const isPage = e.argv[0] === 'curl' && e.argv.some(a => a.includes('%{url_effective}'))
-    return {
-      value: {
-        exitCode: isPage ? 0 : 1,
-        stdout: isPage ? '200 https://site.io/' : '',
-        stderr: '',
-        isStdoutTruncated: false,
-        isStderrTruncated: false,
-      },
-    }
-  })
-  on('fs.read', () => ({ value: '<html><head><title>Site &amp; Co</title></head></html>' }) as never)
+  on('process.run', () => ({
+    value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+  }))
+  // The page comes through the host's http call.
+  on('http.fetch', () => ({
+    value: {
+      status: 200,
+      ok: true,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      text: '<html><head><title>Site &amp; Co</title></head></html>',
+    },
+  }) as never)
   await $.session.start({ cwd: '/p/alpha', surface: 'desktop', isInteractive: true } as never)
 
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
