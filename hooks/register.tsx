@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Elements, EngineInterface, Register, RenderChildren, RenderElement } from 'claude-code'
+import type { Elements, EngineInterface, Register, RenderChildren, RenderElement, ResolveInput } from 'claude-code'
 
 import type { Drag, Draft, Lang, LinkSort, PinnedLink, Scope } from '../types'
 import { langOf, t } from './i18n'
@@ -413,7 +413,6 @@ type Kit = {
   Button: Elements['desktop']['Button']
   Svg?: Elements['desktop']['Svg']
   Input?: Elements['desktop']['Input']
-  Client?: Elements['desktop']['Client']
   /** The desktop's rows start transparent, so a hover has a color to paint over. */
   base: { backgroundColor?: string }
   hover: string
@@ -432,7 +431,6 @@ function kitOf(els: ReturnType<EngineInterface['ui']['resolve']>, surface: strin
     Button: els.Button,
     ...('Svg' in els ? { Svg: els.Svg } : {}),
     ...('Input' in els ? { Input: els.Input } : {}),
-    ...('Client' in els ? { Client: els.Client } : {}),
     base: isTerminal ? {} : { backgroundColor: 'transparent' },
     hover: isTerminal ? 'userMessageBackground' : 'rgba(128, 128, 128, 0.14)',
     quiet: isTerminal ? {} : { hover: { backgroundColor: 'transparent' } },
@@ -448,11 +446,30 @@ function linkIcon(k: Kit, url: string) {
   return <Svg source={faviconSvg(k.icons[host], host)} alt={host} width={ICON_BOX} height={ICON_BOX} />
 }
 
-/** A drag handle: a Client that reports the pointer's moves; nothing where the surface has none. */
-function dragHandle(k: Kit, key: string, isDragging: boolean, width = 2) {
-  if (k.Client === undefined) return null
-  const { Client } = k
-  return <Client key={key} module="./drag-handle.tsx" props={{ glyph: '⠿', isDragging }} width={width} height={1} />
+/**
+ * A drag handle, the mod's own drag-handle.tsx, which reports the pointer's
+ * moves; nothing on a surface that draws no surface module. The element is
+ * taken from the table here and its module named in the tag, as the plugin
+ * directory reads them.
+ */
+function dragHandle($: Engine, e: ResolveInput, key: string, isDragging: boolean, width = 2) {
+  if (e.surface !== 'desktop' && e.surface !== 'terminal') return null
+  const els = $.ui.resolve(e)
+  return <els.Client key={key} module="./drag-handle.tsx" props={{ glyph: '⠿', isDragging }} width={width} height={1} />
+}
+
+type FieldProps = { value: string; placeholder: string; isActive: boolean; icon: string; rev: number }
+
+/** One of the mod's text fields (text-field.tsx), as wide as `width`; nothing where none is drawn. */
+function textField($: Engine, e: ResolveInput, key: string, props: FieldProps, width: string) {
+  if (e.surface !== 'desktop' && e.surface !== 'terminal') return null
+  const els = $.ui.resolve(e)
+  return <els.Client key={key} width={width} module="./text-field.tsx" props={props} />
+}
+
+/** Whether the surface draws the mod's own fields and handles. */
+function drawsModules(e: ResolveInput): boolean {
+  return e.surface === 'desktop' || e.surface === 'terminal'
 }
 
 /**
@@ -557,41 +574,52 @@ const ICON_ROOM = '\u2007\u2007\u2007'
 /** The text fields the mod draws: a field's key is where its posts go. */
 const FIELDS = ['search', 'draft-title', 'draft-url'] as const
 
+/** A form field where the surface draws none of the mod's own: the app's Input. */
+function draftInput($: Engine, k: Kit, key: 'draft-title' | 'draft-url', value: string, placeholder: string) {
+  if (k.Input === undefined) return null
+  const { Input } = k
+  return (
+    <Input
+      key={key}
+      placeholder={placeholder}
+      value={value}
+      onInput={text => void update($, draft, now => (key === 'draft-title' ? { ...now, title: text } : { ...now, url: text }))}
+      onSubmit={text => void submitDraft($, key === 'draft-title' ? { title: text } : { url: text })}
+    />
+  )
+}
+
 /**
  * The add / edit form: name, link, Project / Session, Cancel, Save. Under the
- * bar it is one row across the band; in the pane (`isNarrow`) the fields take
- * a row each, the choice and the buttons the last. The fields are the mod's
- * own (text-field.tsx), so they stretch; where a surface has no Client, Input.
+ * bar it is one row across the band, the fields sharing what the buttons
+ * leave; in the pane (`isNarrow`) the fields take a row each, the choice and
+ * the buttons the last. The fields are the mod's own (text-field.tsx), so
+ * they stretch; elsewhere the app's Input.
  */
-function draftForm($: Engine, k: Kit, d: Draft, l: Lang, active: string | null, isNarrow = false) {
-  const { Box, Button, Input, Client } = k
-  const field = (key: 'draft-title' | 'draft-url', grow: number) => {
-    const value = key === 'draft-title' ? d.title : d.url
-    const placeholder = t(l, key === 'draft-title' ? 'titlePlaceholder' : 'urlPlaceholder')
-    if (Client !== undefined) {
-      // The field fills a Box that grows: the buttons keep their width (it
-      // differs by language) and the fields share what is left, half each.
-      return (
-        <Box key={`${key}-box`} flexGrow={grow} flexShrink={1} width={0} minWidth={0}>
-          <Client
-            key={key}
-            width="100%"
-            module="./text-field.tsx"
-            props={{ value, placeholder, isActive: active === key, icon: '', rev: d.rev }}
-          />
-        </Box>
-      )
-    }
-    return Input === undefined ? null : (
-      <Input
-        key={key}
-        placeholder={placeholder}
-        value={value}
-        onInput={text => void update($, draft, now => (key === 'draft-title' ? { ...now, title: text } : { ...now, url: text }))}
-        onSubmit={text => void submitDraft($, key === 'draft-title' ? { title: text } : { url: text })}
-      />
-    )
-  }
+function draftForm($: Engine, e: ResolveInput, k: Kit, d: Draft, l: Lang, active: string | null, isNarrow = false) {
+  const { Box, Button } = k
+  const titleProps: FieldProps = { value: d.title, placeholder: t(l, 'titlePlaceholder'), isActive: active === 'draft-title', icon: '', rev: d.rev }
+  const urlProps: FieldProps = { value: d.url, placeholder: t(l, 'urlPlaceholder'), isActive: active === 'draft-url', icon: '', rev: d.rev }
+  const own = drawsModules(e)
+  // Under the bar each field fills a Box that grows from no width: half each.
+  const title = !own ? (
+    draftInput($, k, 'draft-title', d.title, titleProps.placeholder)
+  ) : isNarrow ? (
+    textField($, e, 'draft-title', titleProps, '100%')
+  ) : (
+    <Box key="draft-title-box" flexGrow={1} flexShrink={1} width={0} minWidth={0}>
+      {textField($, e, 'draft-title', titleProps, '100%')}
+    </Box>
+  )
+  const url = !own ? (
+    draftInput($, k, 'draft-url', d.url, urlProps.placeholder)
+  ) : isNarrow ? (
+    textField($, e, 'draft-url', urlProps, '100%')
+  ) : (
+    <Box key="draft-url-box" flexGrow={1} flexShrink={1} width={0} minWidth={0}>
+      {textField($, e, 'draft-url', urlProps, '100%')}
+    </Box>
+  )
   // One height for both: the chosen scope is lit (primary, as «All» is), the
   // other dim; a new link starts on the bar's scope, «Project» by default.
   const scopes = (
@@ -615,8 +643,8 @@ function draftForm($: Engine, k: Kit, d: Draft, l: Lang, active: string | null, 
   if (isNarrow) {
     return (
       <Box flexDirection="column" alignItems="stretch" rowGap={1}>
-        {field('draft-title', 1)}
-        {field('draft-url', 1)}
+        {title}
+        {url}
         <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1} flexWrap="wrap">
           {scopes}
           {buttons}
@@ -626,8 +654,8 @@ function draftForm($: Engine, k: Kit, d: Draft, l: Lang, active: string | null, 
   }
   return (
     <Box flexDirection="row" alignItems="center" columnGap={1}>
-      {field('draft-title', 1)}
-      {field('draft-url', 1)}
+      {title}
+      {url}
       {scopes}
       {buttons}
     </Box>
@@ -930,7 +958,7 @@ export const register: Register = on => {
       sec === 'add' ? (
         <Box flexDirection="column" rowGap={1}>
           {bar}
-          {draftForm($, k, d, l, typing)}
+          {draftForm($, e, k, d, l, typing)}
         </Box>
       ) : (
         bar
@@ -958,7 +986,7 @@ export const register: Register = on => {
       read($, sorts),
     ])
     const k = kitOf($.ui.resolve(e), e.surface, icons)
-    const { Box, Text, Button, Input, Client } = k
+    const { Box, Text, Button, Input } = k
     // A field of the pane holds the keys only while the pane has the focus.
     const isTyping = e.props.isFocused ? typingIn : null
     // The name has its line to itself, the URL and the buttons the next one.
@@ -990,13 +1018,8 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" rowGap={1}>
-        {Client !== undefined ? (
-          <Client
-            key="search"
-            module="./text-field.tsx"
-            props={{ value: query, placeholder: t(l, 'search'), isActive: isTyping === 'search', icon: '🔍', rev: 0 }}
-            width="100%"
-          />
+        {drawsModules(e) ? (
+          textField($, e, 'search', { value: query, placeholder: t(l, 'search'), isActive: isTyping === 'search', icon: '🔍', rev: 0 }, '100%')
         ) : (
           Input !== undefined && (
             <Input
@@ -1040,7 +1063,7 @@ export const register: Register = on => {
                   ],
                   i >= BAR_LINKS,
                   // One cell wide, so the column centres it under the favicon.
-                  canDrag ? dragHandle(k, `drag-pane-${s}-${i}`, paneDrag?.from === i, 1) : null,
+                  canDrag ? dragHandle($, e, `drag-pane-${s}-${i}`, paneDrag?.from === i, 1) : null,
                   paneDrag !== null && paneDrag.to === i && paneDrag.from !== i,
                 )
                 return isEdited ? (
@@ -1056,7 +1079,7 @@ export const register: Register = on => {
                       borderStyle="round"
                       borderColor="inactive"
                     >
-                      {draftForm($, k, d, l, isTyping, true)}
+                      {draftForm($, e, k, d, l, isTyping, true)}
                     </Box>
                   </Box>
                 ) : (
