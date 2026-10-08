@@ -574,34 +574,26 @@ const ICON_ROOM = '\u2007\u2007\u2007'
 /** The text fields the mod draws: a field's key is where its posts go. */
 const FIELDS = ['search', 'draft-title', 'draft-url'] as const
 
+/** What the form's buttons do; made in the hooks, where `$` is. */
+type FormActions = { scope: (s: Scope) => void; cancel: () => void; save: () => void }
+
 /**
  * The add / edit form: name, link, Project / Session, Cancel, Save. Under the
  * bar it is one row across the band, the fields sharing what the buttons
  * leave; in the pane (`isNarrow`) the fields take a row each, the choice and
- * the buttons the last. The fields are the mod's own (text-field.tsx), so
- * they stretch; a surface that draws no such module (the band is drawn on the
- * terminal and the desktop alone) shows the form without them.
+ * the buttons the last. It only lays out: the fields (text-field.tsx) and
+ * the actions come from the hook that draws it.
  */
-function draftForm($: Engine, e: ResolveInput, k: Kit, d: Draft, l: Lang, active: string | null, isNarrow = false) {
+function formLayout(
+  k: Kit,
+  l: Lang,
+  d: Draft,
+  title: RenderChildren,
+  url: RenderChildren,
+  act: FormActions,
+  isNarrow = false,
+) {
   const { Box, Button } = k
-  const titleProps: FieldProps = { value: d.title, placeholder: t(l, 'titlePlaceholder'), isActive: active === 'draft-title', icon: '', rev: d.rev }
-  const urlProps: FieldProps = { value: d.url, placeholder: t(l, 'urlPlaceholder'), isActive: active === 'draft-url', icon: '', rev: d.rev }
-  const own = drawsModules(e)
-  // Under the bar each field fills a Box that grows from no width: half each.
-  const title = !own ? null : isNarrow ? (
-    textField($, e, 'draft-title', titleProps, '100%')
-  ) : (
-    <Box key="draft-title-box" flexGrow={1} flexShrink={1} width={0} minWidth={0}>
-      {textField($, e, 'draft-title', titleProps, '100%')}
-    </Box>
-  )
-  const url = !own ? null : isNarrow ? (
-    textField($, e, 'draft-url', urlProps, '100%')
-  ) : (
-    <Box key="draft-url-box" flexGrow={1} flexShrink={1} width={0} minWidth={0}>
-      {textField($, e, 'draft-url', urlProps, '100%')}
-    </Box>
-  )
   // One height for both: the chosen scope is lit (primary, as «All» is), the
   // other dim; a new link starts on the bar's scope, «Project» by default.
   const scopes = (
@@ -611,15 +603,15 @@ function draftForm($: Engine, e: ResolveInput, k: Kit, d: Draft, l: Lang, active
           key={`draft-${s}`}
           label={t(l, s)}
           {...(d.scope === s ? { variant: 'primary' as const } : { dimColor: true })}
-          onPress={() => void update($, draft, now => ({ ...now, scope: s }))}
+          onPress={() => act.scope(s)}
         />
       ))}
     </Box>
   )
   const buttons = (
     <Box flexDirection="row" alignItems="center" justifyContent="flex-end" columnGap={1} flexShrink={0}>
-      <Button key="draft-cancel" label={t(l, 'cancel')} onPress={() => void closeDraft($)} />
-      <Button key="draft-save" label={t(l, 'saveEdit')} variant="primary" onPress={() => void submitDraft($, {})} />
+      <Button key="draft-cancel" label={t(l, 'cancel')} onPress={act.cancel} />
+      <Button key="draft-save" label={t(l, 'saveEdit')} variant="primary" onPress={act.save} />
     </Box>
   )
   if (isNarrow) {
@@ -634,14 +626,26 @@ function draftForm($: Engine, e: ResolveInput, k: Kit, d: Draft, l: Lang, active
       </Box>
     )
   }
+  // Under the bar each field fills a Box that grows from no width: half each.
   return (
     <Box flexDirection="row" alignItems="center" columnGap={1}>
-      {title}
-      {url}
+      <Box key="draft-title-box" flexGrow={1} flexShrink={1} width={0} minWidth={0}>
+        {title}
+      </Box>
+      <Box key="draft-url-box" flexGrow={1} flexShrink={1} width={0} minWidth={0}>
+        {url}
+      </Box>
       {scopes}
       {buttons}
     </Box>
   )
+}
+
+/** The form's field props: its text, hint and whether it holds the keys. */
+function fieldProps(l: Lang, d: Draft, key: 'draft-title' | 'draft-url', active: string | null): FieldProps {
+  return key === 'draft-title'
+    ? { value: d.title, placeholder: t(l, 'titlePlaceholder'), isActive: active === key, icon: '', rev: d.rev }
+    : { value: d.url, placeholder: t(l, 'urlPlaceholder'), isActive: active === key, icon: '', rev: d.rev }
 }
 
 export const register: Register = on => {
@@ -728,6 +732,14 @@ export const register: Register = on => {
     ])
     const k = kitOf($.ui.resolve(e), e.surface, icons)
     const { Box, Text, Button } = k
+    // The add form's parts that need `$`, made here: the fields and the buttons' actions.
+    const formTitle = textField($, e, 'draft-title', fieldProps(l, d, 'draft-title', typing), '100%')
+    const formUrl = textField($, e, 'draft-url', fieldProps(l, d, 'draft-url', typing), '100%')
+    const formActions: FormActions = {
+      scope: s => void update($, draft, now => ({ ...now, scope: s })),
+      cancel: () => void closeDraft($),
+      save: () => void submitDraft($, {}),
+    }
     const budget = labelBudget(e.props.bodyColumns, Math.min(BAR_LINKS, (sc === 'project' ? pLinks : sLinks).length))
 
     const links = sc === 'project' ? pLinks : sLinks
@@ -940,7 +952,7 @@ export const register: Register = on => {
       sec === 'add' ? (
         <Box flexDirection="column" rowGap={1}>
           {bar}
-          {draftForm($, e, k, d, l, typing)}
+          {formLayout(k, l, d, formTitle, formUrl, formActions)}
         </Box>
       ) : (
         bar
@@ -971,6 +983,14 @@ export const register: Register = on => {
     const { Box, Text, Button, Input } = k
     // A field of the pane holds the keys only while the pane has the focus.
     const isTyping = e.props.isFocused ? typingIn : null
+    // The edit form's parts that need `$`, made here: the fields and the buttons' actions.
+    const paneTitle = textField($, e, 'draft-title', fieldProps(l, d, 'draft-title', isTyping), '100%')
+    const paneUrl = textField($, e, 'draft-url', fieldProps(l, d, 'draft-url', isTyping), '100%')
+    const paneActions: FormActions = {
+      scope: s => void update($, draft, now => ({ ...now, scope: s })),
+      cancel: () => void closeDraft($),
+      save: () => void submitDraft($, {}),
+    }
     // The name has its line to itself, the URL and the buttons the next one.
     const width = Math.max(16, e.props.bodyColumns - 14)
     const isSearching = query.trim() !== ''
@@ -1061,7 +1081,7 @@ export const register: Register = on => {
                       borderStyle="round"
                       borderColor="inactive"
                     >
-                      {draftForm($, e, k, d, l, isTyping, true)}
+                      {formLayout(k, l, d, paneTitle, paneUrl, paneActions, true)}
                     </Box>
                   </Box>
                 ) : (
