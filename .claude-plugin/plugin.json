@@ -1,6 +1,6 @@
 {
   "name": "links-bar",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A links bar above the prompt in Claude Desktop's Code tab: up to 4 pinned links per project or session with favicons, the session's 10 latest links, and a pane of every pinned link. Reads the session transcript; fetches favicons with curl (falling back to Google's favicon service for public hosts); opens links with open.",
   "author": {
     "name": "tripolskiydigital",
