@@ -574,27 +574,13 @@ const ICON_ROOM = '\u2007\u2007\u2007'
 /** The text fields the mod draws: a field's key is where its posts go. */
 const FIELDS = ['search', 'draft-title', 'draft-url'] as const
 
-/** A form field where the surface draws none of the mod's own: the app's Input. */
-function draftInput($: Engine, k: Kit, key: 'draft-title' | 'draft-url', value: string, placeholder: string) {
-  if (k.Input === undefined) return null
-  const { Input } = k
-  return (
-    <Input
-      key={key}
-      placeholder={placeholder}
-      value={value}
-      onInput={text => void update($, draft, now => (key === 'draft-title' ? { ...now, title: text } : { ...now, url: text }))}
-      onSubmit={text => void submitDraft($, key === 'draft-title' ? { title: text } : { url: text })}
-    />
-  )
-}
-
 /**
  * The add / edit form: name, link, Project / Session, Cancel, Save. Under the
  * bar it is one row across the band, the fields sharing what the buttons
  * leave; in the pane (`isNarrow`) the fields take a row each, the choice and
  * the buttons the last. The fields are the mod's own (text-field.tsx), so
- * they stretch; elsewhere the app's Input.
+ * they stretch; a surface that draws no such module (the band is drawn on the
+ * terminal and the desktop alone) shows the form without them.
  */
 function draftForm($: Engine, e: ResolveInput, k: Kit, d: Draft, l: Lang, active: string | null, isNarrow = false) {
   const { Box, Button } = k
@@ -602,18 +588,14 @@ function draftForm($: Engine, e: ResolveInput, k: Kit, d: Draft, l: Lang, active
   const urlProps: FieldProps = { value: d.url, placeholder: t(l, 'urlPlaceholder'), isActive: active === 'draft-url', icon: '', rev: d.rev }
   const own = drawsModules(e)
   // Under the bar each field fills a Box that grows from no width: half each.
-  const title = !own ? (
-    draftInput($, k, 'draft-title', d.title, titleProps.placeholder)
-  ) : isNarrow ? (
+  const title = !own ? null : isNarrow ? (
     textField($, e, 'draft-title', titleProps, '100%')
   ) : (
     <Box key="draft-title-box" flexGrow={1} flexShrink={1} width={0} minWidth={0}>
       {textField($, e, 'draft-title', titleProps, '100%')}
     </Box>
   )
-  const url = !own ? (
-    draftInput($, k, 'draft-url', d.url, urlProps.placeholder)
-  ) : isNarrow ? (
+  const url = !own ? null : isNarrow ? (
     textField($, e, 'draft-url', urlProps, '100%')
   ) : (
     <Box key="draft-url-box" flexGrow={1} flexShrink={1} width={0} minWidth={0}>
