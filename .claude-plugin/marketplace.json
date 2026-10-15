@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "A links bar for Claude Desktop's Code tab",
-    "version": "0.2.0"
+    "version": "0.2.1"
   },
   "plugins": [
     {
       "name": "links-bar",
       "source": "./",
       "description": "A links bar above the prompt in Claude Desktop's Code tab: up to 4 pinned links per project or session with favicons, the session's 10 latest links, and a pane of every pinned link. Reads the session transcript; asks a link's own site for its page title and favicon (curl for PNG and ICO icons); opens links with open.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "author": {
         "name": "tripolskiydigital"
       },
